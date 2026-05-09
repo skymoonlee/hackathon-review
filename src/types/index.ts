@@ -1,0 +1,46 @@
+export type ScoreScaleKind = "5-point" | "10-point";
+
+export interface ScoreScale {
+  readonly kind: ScoreScaleKind;
+  readonly min: number;
+  readonly max: number;
+  readonly step: number;
+}
+
+export interface Criterion {
+  id: string;
+  title: string;
+  description: string;
+  weight: number; // 0-1, all weights should sum to ~1
+  scale: ScoreScale;
+}
+
+export interface IntakeFile {
+  name: string;
+  size: number;
+  type: string;
+  /** Data URL (base64). Only set for files small enough to send to the model. */
+  base64?: string;
+  /** True if file exceeded the size cap and was kept as metadata only. */
+  oversize?: boolean;
+}
+
+export interface IntakeData {
+  repoUrl: string;
+  productUrl: string;
+  criteriaText: string;
+  criteriaImage: IntakeFile | null;
+  conceptPdf: IntakeFile | null;
+}
+
+export interface ReviewScore {
+  criterionId: string;
+  value: number;
+  notes: string;
+}
+
+export interface ReviewSession {
+  intake: IntakeData;
+  criteria: Criterion[];
+  scores: Record<string, ReviewScore>;
+}

@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --surface: #ffffff;
+  --surface-muted: #fafafa;
+  --foreground: #0f172a;
+  --foreground-muted: #475569;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+  --accent: #111111;
+  --accent-foreground: #ffffff;
+  --ring: #0f172a1a;
+  --success: #16a34a;
+  --warn: #f59e0b;
+  --info: #2563eb;
+  --neutral: #6b7280;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-warn: var(--warn);
+  --color-info: var(--info);
+  --color-neutral: var(--neutral);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  border-color: var(--border);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: #111;
+  color: #fff;
+}

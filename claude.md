@@ -12,7 +12,7 @@
 1. **하드코딩 금지 (No Hardcoding)**
    - 문자열 라벨, 색상, 사이즈, 임계값, URL, ID 등 **리터럴을 컴포넌트/페이지에 직접 박지 않는다**.
    - 모든 상수는 `src/config/`, `src/constants/`, 또는 환경변수(`.env`)에서 가져온다.
-   - UI 카피/라벨은 `src/i18n/` 또는 `src/constants/copy.ts` 같은 단일 진실 공급원(SSOT)에 둔다.
+   - UI 카피/라벨은 `src/constants/copy.ts` 같은 단일 진실 공급원(SSOT)에 둔다.
    - "임시값"이라도 매직 넘버를 코드에 그대로 두지 않는다 — 상수로 추출 후 그 상수를 사용한다.
 
 2. **공유 컴포넌트 우선 (Reuse Shared Components)**
@@ -36,9 +36,15 @@
 ## 1. 프로젝트 개요
 
 - **이름**: hackathon-review
-- **목적**: 해커톤 결과물(또는 프로젝트)을 **평가/리뷰**하기 위한 데모 웹앱.
+- **목적**: 해커톤 결과물(또는 프로젝트)을 **평가/리뷰**하기 위한 **해커톤** 데모 웹앱.
 - **범위**: 비즈니스 로직 없음. **데모에 필요한 핵심 기능만** 구현.
 - **GitHub**: https://github.com/skymoonlee/hackathon-review
+
+### 주요 사용자 흐름 (데모)
+1. **Intake** — 심사할 GitHub 레포 링크, 제품 웹사이트 링크, 심사 기준(텍스트 + 이미지 첨부 가능), 해커톤 컨셉 PDF 입력
+2. **자동 기준 생성** — 업로드된 자료를 분석해 기준 개수와 점수 스케일을 자동 결정 → 테이블로 표시
+3. **순차 심사** — 생성된 기준을 하나씩 진행하며 점수 입력 → 진행도 표시
+4. **요약** — 최종 점수표/평균/코멘트 한 화면에 요약
 
 ---
 
@@ -46,11 +52,17 @@
 
 | 영역      | 사용 기술                                                       |
 | --------- | --------------------------------------------------------------- |
-| Framework | **Next.js** (App Router)                                        |
+| Framework | **Next.js 16** (App Router)                                     |
 | Language  | **TypeScript** (strict)                                         |
-| UI        | **React** + **Tailwind CSS**                                    |
+| UI        | **React 19** + **Tailwind CSS v4**                              |
 | Backend   | **InsForge** (project: `ab4253b4-91aa-41e4-9650-3adfd6eb8b65`)  |
 | 코드검색/RAG | **Nia** (Nozomio Labs) — `nia` CLI                            |
+
+### 톤앤매너
+- 화이트 베이스. **ChatGPT 같은** 모던하고 깔끔한 톤.
+- 액센트는 거의 흑/회색. 컬러 강조는 최소.
+- 둥근 모서리(`rounded-2xl`), 부드러운 보더(`border-zinc-200`), 넉넉한 여백, 가벼운 그림자.
+- 다크모드는 **사용하지 않음** (데모는 화이트 고정).
 
 ### 백엔드: InsForge
 - 모든 백엔드 작업(테이블, 인증, 스토리지, edge functions 등)은 **InsForge CLI / 스킬**을 통해 수행한다.
@@ -60,9 +72,7 @@
 ### 코드 검색/RAG: Nia
 - 외부 패키지/문서 검색 시 `nia` CLI 또는 Nia 스킬 사용. 무료 플랜 한도(쿼리 50, 컨텍스트 5 등)에 유의.
 
-### 설치된 Agent Skills
-
-이 프로젝트에는 다음 Claude/Agent 스킬이 글로벌로 설치되어 있다 (`~/.claude/skills/`, `~/.agents/skills/`):
+### 설치된 Agent Skills (`~/.claude/skills/`, `~/.agents/skills/`)
 
 | 스킬                    | 용도                                                         |
 | ----------------------- | ------------------------------------------------------------ |
@@ -78,38 +88,38 @@
 
 ---
 
-## 3. 디렉토리 구조 (목표)
+## 3. 디렉토리 구조
 
 ```
 src/
-├── app/                  # Next.js App Router 페이지/레이아웃
+├── app/                  # Next.js App Router 페이지/레이아웃 (+ api routes)
 ├── components/
-│   ├── ui/               # 기본 UI 프리미티브 (Button, Input, Card …)
-│   └── shared/           # 도메인 공통 컴포넌트 (ReviewCard, CriteriaList …)
+│   ├── ui/               # 기본 UI 프리미티브 (Button, Input, Card, FileDrop …)
+│   └── shared/           # 도메인 공통 컴포넌트 (Stepper, ScoreBar, Header …)
 ├── config/
-│   ├── global.ts         # 전역 상수 (브랜드, 테마, 라우트 등)
-│   ├── criteria.ts       # 평가 기준 정의 (동적으로 사용)
+│   ├── global.ts         # 전역 상수 (브랜드, 라우트, 톤앤매너 토큰 등)
+│   ├── criteria.ts       # 폴백 평가 기준 + 스케일
 │   └── env.ts            # process.env → 타입 안전 export
 ├── constants/
-│   └── copy.ts           # UI 카피/라벨 (i18n 대비)
+│   └── copy.ts           # UI 카피/라벨 (SSOT)
 ├── lib/
-│   ├── insforge.ts       # InsForge 클라이언트
-│   └── utils.ts
+│   ├── cn.ts             # clsx + tailwind-merge
+│   ├── insforge.ts       # InsForge 클라이언트 (필요 시)
+│   └── mock-ai.ts        # 데모용 가상 기준 생성기
 └── types/
+    └── index.ts          # 공유 타입 (Submission, Criterion, Score …)
 ```
-
-> 폴더가 아직 없다면 처음 파일을 만들 때 함께 생성한다.
 
 ---
 
 ## 4. 코딩 컨벤션
 
 - **TypeScript strict** — `any` 금지, `unknown` + 타입 가드 사용.
-- **Tailwind 유틸리티** 우선. 커스텀 CSS는 Tailwind로 표현 불가능할 때만.
-- **공통 토큰** (`text-brand`, `bg-surface` 등)은 `tailwind.config.ts`에서 정의 후 사용.
+- **Tailwind v4** 유틸리티 우선 (`@theme inline` 토큰을 globals.css에서 정의).
 - **컴포넌트 prop**은 `as const` 배열/맵으로 옵션을 받아 동적으로 렌더.
 - **Server Component 기본**, 상태/이벤트가 필요한 곳만 `"use client"`.
 - **import 별칭**: `@/` → `src/` (tsconfig paths).
+- 색상/사이즈 등 디자인 토큰은 globals.css의 `@theme inline` 또는 `src/config/global.ts`에서만 정의.
 
 ---
 
@@ -117,10 +127,12 @@ src/
 
 해커톤 데모이므로 다음 우선순위를 지킨다:
 
-1. ✅ **눈에 보이는 흐름** — 핵심 사용자 시나리오 1~2개가 끝까지 동작.
-2. ✅ **데이터는 동적으로** — 더미 데이터라도 InsForge 테이블 또는 `src/config/*.ts` 배열에서 읽어와 렌더.
-3. ⛔ **인증/권한 정교화, 에러 핸들링 풀 커버, 폼 밸리데이션 풀세트 등은 데모에 보이는 한도까지만**.
+1. ✅ **눈에 보이는 흐름** — Intake → 자동 생성 → 순차 심사 → 요약 4단계가 끝까지 동작.
+2. ✅ **데이터는 동적으로** — 더미라도 InsForge 또는 `src/config/*.ts` 배열에서 읽어와 렌더.
+3. ⛔ 인증/권한 정교화, 에러 핸들링 풀 커버, 폼 밸리데이션 풀세트는 **데모에 보이는 한도까지만**.
 4. ⛔ 추상화 / 미래 확장성 / 백워드 호환을 위한 코드는 작성하지 않는다.
+
+> "AI가 자동으로 기준을 생성" 부분은 데모이므로 `lib/mock-ai.ts`에서 그럴듯한 결과를 생성하면 된다 (실제 LLM 호출 X). 단, 생성된 기준은 반드시 **state로 들어가 동적으로 렌더**되어야 한다 (절대규칙 #3).
 
 ---
 
