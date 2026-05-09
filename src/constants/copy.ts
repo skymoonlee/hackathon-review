@@ -14,8 +14,22 @@ export const COPY = {
       label: "Product website",
       placeholder: "https://your-product.example.com",
     },
+    criteriaText: {
+      label: "Criteria notes (optional)",
+      placeholder:
+        "Paste your judging notes here, or leave empty and we'll derive a rubric from the track + attachments.",
+    },
+    parseAttachments: "Parse from attachments",
+    parsing: "Reading attachments…",
+    parseHint: "Drop the criteria image / concept PDF and we'll fill the rubric for you.",
     submit: "Continue",
     submitLoading: "Continuing…",
+  },
+  tracks: {
+    eyebrow: "Hackathon track",
+    title: "Pick the track you're judging",
+    subtitle:
+      "The rubric will lean on this track's emphasis. You can still tweak every row before scoring.",
   },
   criteria: {
     title: "Judging rubric",
@@ -64,7 +78,30 @@ export const COPY = {
   },
   guest: {
     banner:
-      "You're using Hackathon Review as a guest. Reviews are kept locally — sign in to save them across devices.",
+      "You're using Hackathon Reviewer as a guest. Reviews are kept locally — sign in to save them across devices.",
+  },
+  howItWorks: {
+    title: "How it works",
+    steps: [
+      {
+        id: "pick",
+        title: "Pick a track",
+        description:
+          "Choose the closest hackathon track. We pre-fill a tailored rubric you can edit.",
+      },
+      {
+        id: "intake",
+        title: "Drop the project",
+        description:
+          "Repo link, product link, and any criteria image or concept PDF you want to attach.",
+      },
+      {
+        id: "judge",
+        title: "Score one by one",
+        description:
+          "Walk through each criterion, leave notes, and get an auto-weighted summary at the end.",
+      },
+    ],
   },
   empty: {
     noCriteria: "No criteria available yet.",

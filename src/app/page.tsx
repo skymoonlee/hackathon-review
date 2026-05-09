@@ -4,17 +4,26 @@ import { useMemo, useState } from "react";
 import { Header } from "@/components/shared/Header";
 import { Stepper } from "@/components/shared/Stepper";
 import { IntakeForm } from "@/components/shared/IntakeForm";
-import { CriteriaBuilder } from "@/components/shared/CriteriaBuilder";
+import { TrackSelector } from "@/components/shared/TrackSelector";
+import { CriteriaTable } from "@/components/shared/CriteriaTable";
 import { ReviewStep } from "@/components/shared/ReviewStep";
 import { SummaryView } from "@/components/shared/SummaryView";
 import { useAuth } from "@/components/shared/AuthProvider";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 import { COPY } from "@/constants/copy";
 import { type FlowStepKey } from "@/config/global";
+import {
+  DEFAULT_TRACK_ID,
+  getTrack,
+  type HackathonTrackId,
+} from "@/config/tracks";
+import { generateCriteria } from "@/lib/mock-ai";
 import { saveReview, saveSubmission } from "@/lib/persistence";
 import type { Criterion, IntakeData, ReviewScore } from "@/types";
 
 const EMPTY_INTAKE: IntakeData = {
+  trackId: DEFAULT_TRACK_ID,
   repoUrl: "",
   productUrl: "",
   criteriaText: "",
@@ -24,6 +33,18 @@ const EMPTY_INTAKE: IntakeData = {
 
 type PersistState = "idle" | "saving" | "saved" | "failed" | "guest";
 
+function normalizeWeights(criteria: Criterion[]): Criterion[] {
+  const total = criteria.reduce((s, c) => s + (c.weight > 0 ? c.weight : 0), 0);
+  if (total <= 0) {
+    const even = 1 / Math.max(criteria.length, 1);
+    return criteria.map((c) => ({ ...c, weight: even }));
+  }
+  return criteria.map((c) => ({
+    ...c,
+    weight: (c.weight > 0 ? c.weight : 0) / total,
+  }));
+}
+
 export default function HomePage() {
   const { user } = useAuth();
   const [step, setStep] = useState<FlowStepKey>("intake");
@@ -31,23 +52,62 @@ export default function HomePage() {
   const [criteria, setCriteria] = useState<Criterion[]>([]);
   const [scores, setScores] = useState<Record<string, ReviewScore>>({});
   const [reviewIndex, setReviewIndex] = useState(0);
+  const [parsing, setParsing] = useState(false);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [persisted, setPersisted] = useState<PersistState>("idle");
 
+  const selectedTrack = getTrack(intake.trackId);
+
+  function handleTrackChange(trackId: HackathonTrackId) {
+    setIntake((prev) => ({ ...prev, trackId }));
+  }
+
+  async function handleParseAttachments(data: IntakeData) {
+    setIntake(data);
+    setParsing(true);
+    try {
+      const generated = await generateCriteria(data);
+      setCriteria(generated);
+      setScores({});
+      setReviewIndex(0);
+      setStep("criteria");
+    } finally {
+      setParsing(false);
+    }
+  }
+
   function handleIntakeSubmit(data: IntakeData) {
     setIntake(data);
+    if (criteria.length === 0) {
+      // Seed from the selected track's template — instant, deterministic.
+      // Use "Parse from attachments" if you want AI to refine instead.
+      setCriteria([...getTrack(data.trackId).template]);
+    }
     setStep("criteria");
   }
 
-  async function handleStartReview(builtCriteria: Criterion[]) {
-    setCriteria(builtCriteria);
+  async function handleSuggestFromAttachments() {
+    setParsing(true);
+    try {
+      const generated = await generateCriteria(intake);
+      setCriteria(generated);
+      setScores({});
+      setReviewIndex(0);
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  async function handleStartReview() {
+    const finalCriteria = normalizeWeights(criteria);
+    setCriteria(finalCriteria);
     setScores({});
     setReviewIndex(0);
     setSubmissionId(null);
     if (user) {
       const saved = await saveSubmission({
         intake,
-        criteria: builtCriteria,
+        criteria: finalCriteria,
         userId: user.id,
       });
       setSubmissionId(saved?.id ?? null);
@@ -118,6 +178,10 @@ export default function HomePage() {
   }
 
   const current = criteria[reviewIndex];
+  const canSuggest =
+    intake.criteriaText.trim().length > 0 ||
+    intake.criteriaImage !== null ||
+    intake.conceptPdf !== null;
 
   const persistLabel: Record<PersistState, string> = {
     idle: "Local only",
@@ -149,33 +213,90 @@ export default function HomePage() {
                   {COPY.guest.banner}
                 </p>
               ) : null}
+              <ol className="mt-6 grid gap-3 sm:grid-cols-3">
+                {COPY.howItWorks.steps.map((s, i) => (
+                  <li
+                    key={s.id}
+                    className="flex flex-col gap-1 rounded-2xl border border-[var(--color-border)] bg-white p-4"
+                  >
+                    <span className="grid h-6 w-6 place-items-center rounded-full bg-[var(--color-foreground)] text-[10px] font-semibold text-white">
+                      {i + 1}
+                    </span>
+                    <span className="text-sm font-semibold text-[var(--color-foreground)]">
+                      {s.title}
+                    </span>
+                    <span className="text-xs leading-relaxed text-[var(--color-foreground-muted)]">
+                      {s.description}
+                    </span>
+                  </li>
+                ))}
+              </ol>
             </div>
           ) : null}
         </div>
 
+        {step === "intake" ? (
+          <div className="mb-6">
+            <TrackSelector value={intake.trackId} onChange={handleTrackChange} />
+          </div>
+        ) : null}
+
         <Card>
           {step === "intake" ? (
-            <CardBody>
-              <IntakeForm initial={intake} onSubmit={handleIntakeSubmit} />
-            </CardBody>
+            <>
+              <CardHeader>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-semibold tracking-tight">
+                      Project intake
+                    </h2>
+                    <p className="mt-1 text-sm text-[var(--color-foreground-muted)]">
+                      Track:{" "}
+                      <span className="font-medium text-[var(--color-foreground)]">
+                        {selectedTrack.name}
+                      </span>{" "}
+                      — {selectedTrack.tagline}
+                    </p>
+                  </div>
+                  <Badge tone="info">{selectedTrack.tagline}</Badge>
+                </div>
+              </CardHeader>
+              <CardBody>
+                <IntakeForm
+                  initial={intake}
+                  loading={parsing}
+                  parsing={parsing}
+                  onSubmit={handleIntakeSubmit}
+                  onParse={handleParseAttachments}
+                />
+              </CardBody>
+            </>
           ) : null}
 
           {step === "criteria" ? (
             <>
               <CardHeader>
-                <h2 className="text-xl font-semibold tracking-tight">
-                  {COPY.criteria.title}
-                </h2>
-                <p className="mt-1 text-sm text-[var(--color-foreground-muted)]">
-                  {COPY.criteria.subtitle}
-                </p>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-semibold tracking-tight">
+                      {COPY.criteria.title}
+                    </h2>
+                    <p className="mt-1 text-sm text-[var(--color-foreground-muted)]">
+                      {COPY.criteria.subtitle}
+                    </p>
+                  </div>
+                  <Badge tone="neutral">{selectedTrack.name}</Badge>
+                </div>
               </CardHeader>
               <CardBody>
-                <CriteriaBuilder
-                  intake={intake}
-                  initial={criteria}
+                <CriteriaTable
+                  criteria={criteria}
+                  onChange={setCriteria}
                   onStart={handleStartReview}
                   onBack={() => setStep("intake")}
+                  onSuggest={handleSuggestFromAttachments}
+                  suggesting={parsing}
+                  canSuggest={canSuggest}
                 />
               </CardBody>
             </>

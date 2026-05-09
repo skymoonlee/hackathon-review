@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { SERVER_ENV } from "@/config/env";
-import { FALLBACK_CRITERIA, SCORE_SCALES } from "@/config/criteria";
+import { SCORE_SCALES } from "@/config/criteria";
+import { getTrack } from "@/config/tracks";
 import type { Criterion, IntakeFile } from "@/types";
 
 export const runtime = "nodejs";
 
 interface GenerateBody {
+  trackId?: string;
   repoUrl?: string;
   productUrl?: string;
   criteriaText?: string;
@@ -39,7 +41,11 @@ Constraints:
 - ids must be kebab-case and unique`;
 
 function buildUserContent(body: GenerateBody): OpenAI.Chat.ChatCompletionUserMessageParam["content"] {
-  const lines: string[] = [];
+  const track = getTrack(body.trackId);
+  const lines: string[] = [
+    `Hackathon track: ${track.name} — ${track.description}`,
+    `Track emphasis: ${track.emphasis.join(", ")}`,
+  ];
   if (body.repoUrl) lines.push(`Repository: ${body.repoUrl}`);
   if (body.productUrl) lines.push(`Product website: ${body.productUrl}`);
   if (body.criteriaText?.trim()) {
@@ -53,9 +59,6 @@ function buildUserContent(body: GenerateBody): OpenAI.Chat.ChatCompletionUserMes
         ? "(attached separately as a hint only — text not extracted)"
         : "(metadata only)";
     lines.push(`Hackathon concept PDF: ${body.conceptPdf.name} ${note}`);
-  }
-  if (lines.length === 0) {
-    lines.push("No materials supplied — produce sensible defaults for a generic hackathon.");
   }
   const text = lines.join("\n");
 
@@ -131,7 +134,7 @@ export async function POST(request: Request) {
 
   if (!SERVER_ENV.openaiApiKey) {
     return NextResponse.json(
-      { criteria: FALLBACK_CRITERIA, source: "fallback", reason: "missing_openai_key" },
+      { criteria: getTrack(body.trackId).template, source: "fallback", reason: "missing_openai_key" },
       { status: 200 },
     );
   }
@@ -154,7 +157,7 @@ export async function POST(request: Request) {
 
     if (criteria.length === 0) {
       return NextResponse.json({
-        criteria: FALLBACK_CRITERIA,
+        criteria: getTrack(body.trackId).template,
         source: "fallback",
         reason: "empty_model_output",
       });
@@ -164,7 +167,7 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("[generate-criteria] OpenAI call failed:", err);
     return NextResponse.json({
-      criteria: FALLBACK_CRITERIA,
+      criteria: getTrack(body.trackId).template,
       source: "fallback",
       reason: err instanceof Error ? err.message : "unknown",
     });

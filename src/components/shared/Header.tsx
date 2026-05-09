@@ -5,6 +5,7 @@ import { BRAND } from "@/config/global";
 import { useAuth } from "@/components/shared/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { AuthDialog } from "@/components/shared/AuthDialog";
+import { Logo } from "@/components/shared/Logo";
 
 export function Header() {
   const { user, signOut } = useAuth();
@@ -15,9 +16,7 @@ export function Header() {
       <header className="sticky top-0 z-10 border-b border-[var(--color-border)] bg-white/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-6">
           <div className="flex items-center gap-2">
-            <div className="grid h-7 w-7 place-items-center rounded-lg bg-[var(--color-accent)] text-[10px] font-semibold text-[var(--color-accent-foreground)]">
-              {BRAND.shortName}
-            </div>
+            <Logo size={28} />
             <span className="text-sm font-semibold text-[var(--color-foreground)]">
               {BRAND.name}
             </span>

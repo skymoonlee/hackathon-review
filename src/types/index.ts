@@ -26,6 +26,7 @@ export interface IntakeFile {
 }
 
 export interface IntakeData {
+  trackId: string;
   repoUrl: string;
   productUrl: string;
   criteriaText: string;
@@ -43,4 +44,33 @@ export interface ReviewSession {
   intake: IntakeData;
   criteria: Criterion[];
   scores: Record<string, ReviewScore>;
+}
+
+export interface RepoFile {
+  path: string;
+  content: string;
+}
+
+export interface RepoContext {
+  source: "nia" | "fallback" | "none";
+  reason?: string;
+  owner?: string;
+  repo?: string;
+  tree?: string;
+  files: RepoFile[];
+  shape?: string[];
+}
+
+export interface JudgeVerdict {
+  criterionId: string;
+  value: number;
+  rationale: string;
+  evidence: string[];
+  /** Free-form thinking transcript captured during streaming. */
+  thinking?: string;
+}
+
+export interface JudgeChatMessage {
+  role: "user" | "assistant";
+  content: string;
 }

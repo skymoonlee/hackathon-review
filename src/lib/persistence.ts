@@ -18,6 +18,7 @@ export async function saveSubmission(params: {
     .from("submissions")
     .insert([
       {
+        track_id: params.intake.trackId || null,
         repo_url: params.intake.repoUrl || null,
         product_url: params.intake.productUrl || null,
         criteria_text: params.intake.criteriaText || null,

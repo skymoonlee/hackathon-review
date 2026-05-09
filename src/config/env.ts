@@ -13,6 +13,7 @@ export const SERVER_ENV = {
   insforgeProjectId: process.env.INSFORGE_PROJECT_ID ?? "",
   insforgeOssHost: process.env.INSFORGE_OSS_HOST ?? "",
   niaApiKey: process.env.NIA_API_KEY ?? "",
+  niaBinary: process.env.NIA_BINARY ?? "nia",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   openaiModel: process.env.OPENAI_MODEL ?? "gpt-5.5",
 } as const;
