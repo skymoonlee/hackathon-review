@@ -40,6 +40,13 @@ export interface IntakeData {
   conceptPdf: IntakeFile | null;
 }
 
+export interface Sponsor {
+  /** Company / org name (e.g. "InsForge", "Nia"). */
+  name: string;
+  /** Optional short note about why they sponsor this track (e.g. "backend"). */
+  focus?: string;
+}
+
 export interface ParsedTrack {
   id: string;
   name: string;
@@ -49,6 +56,8 @@ export interface ParsedTrack {
   tagline?: string;
   /** Optional pre-defined rubric — populated when the track came from a saved preset. */
   criteria?: Criterion[];
+  /** Sponsors backing this track — drives the multi-persona judge panel. */
+  sponsors?: readonly Sponsor[];
 }
 
 export interface HackathonPreset {
@@ -67,6 +76,20 @@ export interface TrackContext {
   tagline?: string;
   description: string;
   emphasis?: readonly string[];
+  sponsors?: readonly Sponsor[];
+}
+
+/** A judge persona — one panel seat. Built from a track's sponsors so each
+ *  sponsor company gets a representative on the panel. */
+export interface JudgePersona {
+  /** Stable id used to key parallel streams (e.g. "insforge-rep"). */
+  id: string;
+  /** Display name for the panel header (e.g. "InsForge representative"). */
+  name: string;
+  /** Sponsor company this persona represents. */
+  company: string;
+  /** Short summary of what this persona cares about — injected into the prompt. */
+  viewpoint: string;
 }
 
 export interface ReviewScore {
@@ -103,6 +126,17 @@ export interface JudgeVerdict {
   evidence: string[];
   /** Free-form thinking transcript captured during streaming. */
   thinking?: string;
+  /** Persona that produced this verdict (omitted for legacy single-judge runs). */
+  personaId?: string;
+}
+
+/** Aggregated panel verdict — average across personas, kept alongside per-seat verdicts. */
+export interface PanelVerdict {
+  criterionId: string;
+  /** Mean score across personas (rounded to nearest scale step at consumption sites). */
+  value: number;
+  /** Per-persona verdicts, keyed by personaId. */
+  perPersona: JudgeVerdict[];
 }
 
 export interface JudgeChatMessage {

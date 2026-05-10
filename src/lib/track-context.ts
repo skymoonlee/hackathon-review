@@ -4,9 +4,11 @@ import type { Criterion, ParsedTrack, TrackContext } from "@/types";
 export function resolveTrackContext(
   trackId: string | null | undefined,
   parsedTracks: ParsedTrack[] = [],
+  snapshot?: ParsedTrack | null,
 ): TrackContext {
   const id = trackId || DEFAULT_TRACK_ID;
-  const parsed = parsedTracks.find((t) => t.id === id);
+  const fromSnapshot = snapshot && snapshot.id === id ? snapshot : null;
+  const parsed = fromSnapshot ?? parsedTracks.find((t) => t.id === id);
   if (parsed) {
     return {
       id: parsed.id,
@@ -14,6 +16,7 @@ export function resolveTrackContext(
       tagline: parsed.tagline ?? parsed.emphasis?.[0],
       description: parsed.description,
       emphasis: parsed.emphasis,
+      sponsors: parsed.sponsors,
     };
   }
   const fallback = getTrack(id);

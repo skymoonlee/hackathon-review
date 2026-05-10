@@ -4,6 +4,7 @@ import { SERVER_ENV } from "@/config/env";
 import type {
   Criterion,
   IntakeData,
+  JudgePersona,
   RepoContext,
   TrackContext,
 } from "@/types";
@@ -15,26 +16,60 @@ interface Body {
   intake?: Pick<IntakeData, "trackId" | "repoUrl" | "productUrl" | "criteriaText">;
   trackContext?: TrackContext;
   repoContext?: RepoContext;
+  persona?: JudgePersona;
 }
 
-const SYSTEM_PROMPT = `You are an expert hackathon judge scoring ONE rubric criterion at a time.
+function personaPreamble(persona: JudgePersona | undefined): string {
+  if (!persona) return "";
+  return `You are role-playing as: ${persona.name} (${persona.company}).
+Your viewpoint: ${persona.viewpoint}
+- Stay in character: weigh evidence through this viewpoint when the rubric allows for interpretation.
+- DO NOT reward the project just because it uses ${persona.company}'s product, and DO NOT penalize it for using a competitor. The rubric is the rubric.
+- Your viewpoint shapes which evidence you find salient and how strict you are on edge calls — not whether you follow the rubric.
+
+`;
+}
+
+const SYSTEM_PROMPT_BODY = `You are an expert hackathon judge scoring ONE rubric criterion at a time.
+
+You are ONE seat on a multi-judge panel. The system will collect each panelist's JSON
+score and compute the panel average — DO NOT try to average, hedge to the middle, or
+"calibrate" toward what other judges might say. Pick the score YOU believe is correct
+based on the rubric and the evidence; the system handles aggregation.
 
 Fairness rules:
 - Every team in the same track is judged against the SAME rubric. Do not invent your own criteria.
 - Anchor "what great looks like" to the criterion's description. The description's "Top score: …" wording is the bar for the maximum value on the scale.
 - Interpret the criterion through the lens of the provided track context (its name, tagline, description, emphasis). The same word can mean different things across tracks — use the track context to disambiguate.
 - Do NOT let the project's URL, brand, or category bias the score outside what the rubric measures.
+- Use the FULL scale. Do not default to mid-scale to "play it safe." Reserve the top of the scale only for projects that genuinely clear the criterion's "Top score" bar; reserve the bottom for projects that demonstrably miss it. If the evidence is mixed, sit between the extremes deliberately — not by averaging to dodge a call.
 
-Process you MUST follow, in order, in plain text:
-1. Reflect on the criterion AS DEFINED, given the track context, and what "great" looks like on this specific project.
-2. Walk the repo signal you were given (file tree, README, key files, shape) and pull out 2–4 concrete observations relevant to THIS criterion. Quote file paths.
-3. Weigh strengths vs. gaps for this criterion. Be specific. No generic praise.
-4. Decide a numeric score within the criterion's scale.
+Reasoning depth — you MUST think hard before scoring. Skipping or rushing any of these
+steps is a failure mode. Walk all six in order, in plain text:
+
+1. **Restate the criterion in your own words** through the lens of the track context.
+   What is this criterion *actually* asking, in this track? What would the description's
+   "Top score" look like for THIS project shape?
+2. **Inventory repo signal.** From the file tree, README, key files, and source shape,
+   list 4–6 concrete observations relevant to THIS criterion. Quote file paths
+   (e.g. \`src/app/api/foo/route.ts\`). No generic praise. If signal is missing, name
+   what is missing and why it matters for this criterion.
+3. **Map evidence to the criterion.** For each observation, say whether it supports a
+   higher score, a lower score, or is neutral, and WHY (one short clause).
+4. **Steelman the opposite call.** Briefly argue the strongest case for a score 1–2
+   steps away from where you're leaning. If that case is stronger than yours, change
+   your lean. State whether you changed it.
+5. **Anchor to the scale.** Re-read the criterion's "Top score" bar. Pick the integer
+   (or step-aligned value) that best matches the weight of evidence. Do not round
+   toward the middle. Justify the gap between your score and one step above / below.
+6. **Final score** — state it as a number within [scale.min, scale.max].
 
 Output format — strict, two phases separated by a single literal marker line:
 
 ${JUDGE.reasoningPrefix}
-<your step 1–4 reasoning, written as short conversational paragraphs. one paragraph per step. Korean if the user's notes are Korean, otherwise English. Keep total reasoning under ~250 words.>
+<your step 1–6 reasoning, written as short labeled paragraphs (one per step, prefixed
+with "Step N:"). Korean if the user's notes are Korean, otherwise English. Aim for
+350–500 words — be thorough, not padded. Quote file paths verbatim.>
 
 ${JUDGE.scorePrefix}
 {"value": <number>, "rationale": "<one tight sentence justifying the score>", "evidence": ["<short bullet>", "<short bullet>", "..."]}
@@ -42,9 +77,14 @@ ${JUDGE.scorePrefix}
 Hard rules:
 - The reasoning section MUST come first and MUST start with the literal "${JUDGE.reasoningPrefix}" line.
 - The score section MUST start with the literal "${JUDGE.scorePrefix}" line, on its own line, followed by valid JSON only.
-- "value" must be an integer (or step-aligned number) within [scale.min, scale.max].
+- "value" MUST be a step-aligned number within [scale.min, scale.max] — no averages, no decimals unless step allows.
+- "rationale" is ONE sentence. Do not pre-average with imagined other judges.
 - "evidence" is a flat array of 2–5 short strings citing file paths or concrete observations from the repo.
 - Do NOT wrap JSON in code fences. Do NOT add anything after the JSON.`;
+
+function buildSystemPrompt(persona: JudgePersona | undefined): string {
+  return `${personaPreamble(persona)}${SYSTEM_PROMPT_BODY}`;
+}
 
 function repoSection(ctx: RepoContext | undefined): string {
   if (!ctx || ctx.source === "none") return "Repo signal: (no GitHub URL provided).";
@@ -161,7 +201,11 @@ export async function POST(request: Request) {
         send({ type: "reasoning", delta: "OpenAI key missing — skipping live judging." });
         send({
           type: "verdict",
-          verdict: { criterionId: body.criterion!.id, ...fb },
+          verdict: {
+            criterionId: body.criterion!.id,
+            ...fb,
+            personaId: body.persona?.id,
+          },
           source: "fallback",
         });
         send({ type: "done" });
@@ -182,7 +226,7 @@ export async function POST(request: Request) {
           model: SERVER_ENV.openaiModel,
           stream: true,
           messages: [
-            { role: "system", content: SYSTEM_PROMPT },
+            { role: "system", content: buildSystemPrompt(body.persona) },
             { role: "user", content: userMessage },
           ],
         });
@@ -227,6 +271,7 @@ export async function POST(request: Request) {
             criterionId: body.criterion!.id,
             ...verdictParsed,
             thinking: reasoningTranscript.trim(),
+            personaId: body.persona?.id,
           },
           source: scoreBuffer.trim() ? "openai" : "fallback",
         });
@@ -240,7 +285,11 @@ export async function POST(request: Request) {
         });
         send({
           type: "verdict",
-          verdict: { criterionId: body.criterion!.id, ...fb },
+          verdict: {
+            criterionId: body.criterion!.id,
+            ...fb,
+            personaId: body.persona?.id,
+          },
           source: "fallback",
         });
         send({ type: "done" });

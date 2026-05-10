@@ -2,7 +2,7 @@
 
 import { getInsforge } from "@/lib/insforge-client";
 import { DB_TABLES } from "@/config/global";
-import type { Criterion } from "@/types";
+import type { Criterion, ParsedTrack } from "@/types";
 
 interface SubmissionRow {
   id: string;
@@ -15,6 +15,7 @@ interface SubmissionRow {
   criteria_image_url: string | null;
   concept_pdf_name: string | null;
   concept_pdf_url: string | null;
+  track_snapshot: ParsedTrack | null;
   created_by: string | null;
   created_at: string;
 }
@@ -51,6 +52,7 @@ export interface ReviewSummary {
 export interface SubmissionDetail {
   id: string;
   trackId: string | null;
+  trackSnapshot: ParsedTrack | null;
   repoUrl: string | null;
   productUrl: string | null;
   criteriaText: string | null;
@@ -66,7 +68,7 @@ const SUBMISSION_LIST_COLUMNS =
   "id, track_id, repo_url, product_url, criteria, created_at";
 
 const SUBMISSION_DETAIL_COLUMNS =
-  "id, track_id, repo_url, product_url, criteria_text, criteria, criteria_image_name, criteria_image_url, concept_pdf_name, concept_pdf_url, created_by, created_at";
+  "id, track_id, repo_url, product_url, criteria_text, criteria, criteria_image_name, criteria_image_url, concept_pdf_name, concept_pdf_url, track_snapshot, created_by, created_at";
 
 const REVIEW_SUMMARY_COLUMNS =
   "id, submission_id, judge_id, weighted_total, normalized, created_at";
@@ -160,6 +162,7 @@ export async function fetchSubmission(id: string): Promise<SubmissionDetail | nu
   return {
     id: s.id,
     trackId: s.track_id,
+    trackSnapshot: s.track_snapshot ?? null,
     repoUrl: s.repo_url,
     productUrl: s.product_url,
     criteriaText: s.criteria_text,

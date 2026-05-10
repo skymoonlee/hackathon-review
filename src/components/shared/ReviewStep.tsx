@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { COPY } from "@/constants/copy";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Textarea";
 import { JudgeStream } from "@/components/shared/JudgeStream";
 import { JudgeChat } from "@/components/shared/JudgeChat";
+import { buildPersonasForTrack } from "@/lib/personas";
 import type {
   Criterion,
   IntakeData,
@@ -65,6 +66,10 @@ export function ReviewStep({
   );
   const value = score?.value;
   const notes = score?.notes ?? "";
+  const personas = useMemo(
+    () => buildPersonasForTrack(trackContext),
+    [trackContext],
+  );
 
   const progressPct = ((index + 1) / total) * 100;
 
@@ -110,6 +115,7 @@ export function ReviewStep({
         intake={intake}
         trackContext={trackContext}
         repoContext={repoContext}
+        personas={personas}
         initialVerdict={verdict}
         onVerdict={handleVerdict}
       />

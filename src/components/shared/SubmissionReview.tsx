@@ -27,7 +27,11 @@ import type {
 } from "@/types";
 
 type Status = "idle" | "loading" | "ready" | "missing" | "guest" | "failed";
-type PersistState = "idle" | "saving" | "saved" | "failed" | "duplicate";
+type PersistStatus = "idle" | "saving" | "saved" | "failed" | "duplicate";
+interface PersistState {
+  status: PersistStatus;
+  error?: string;
+}
 type Step = "review" | "summary";
 
 interface SubmissionReviewViewProps {
@@ -74,7 +78,7 @@ export function SubmissionReviewView({ submissionId }: SubmissionReviewViewProps
     Record<string, JudgeChatMessage[]>
   >({});
   const [repoContext, setRepoContext] = useState<RepoContext | null>(null);
-  const [persisted, setPersisted] = useState<PersistState>("idle");
+  const [persisted, setPersisted] = useState<PersistState>({ status: "idle" });
 
   useEffect(() => {
     if (authLoading) return;
@@ -147,8 +151,8 @@ export function SubmissionReviewView({ submissionId }: SubmissionReviewViewProps
   );
 
   const trackContext = useMemo(
-    () => resolveTrackContext(detail?.trackId ?? "", []),
-    [detail?.trackId],
+    () => resolveTrackContext(detail?.trackId ?? "", [], detail?.trackSnapshot),
+    [detail?.trackId, detail?.trackSnapshot],
   );
 
   const summary = useMemo(() => {
@@ -182,18 +186,20 @@ export function SubmissionReviewView({ submissionId }: SubmissionReviewViewProps
 
   async function persistReview() {
     if (!user || !detail) {
-      setPersisted("failed");
+      setPersisted({ status: "failed", error: "Not signed in" });
       return;
     }
-    setPersisted("saving");
-    const ok = await saveReview({
+    setPersisted({ status: "saving" });
+    const result = await saveReview({
       submissionId: detail.id,
       judgeId: user.id,
       scores,
       weightedTotal: Number(summary.weightedTotal.toFixed(3)),
       normalized: Number(summary.normalized.toFixed(4)),
     });
-    setPersisted(ok ? "saved" : "duplicate");
+    if (result.status === "saved") setPersisted({ status: "saved" });
+    else if (result.status === "duplicate") setPersisted({ status: "duplicate" });
+    else setPersisted({ status: "failed", error: result.message });
   }
 
   async function handleNext() {
@@ -241,13 +247,15 @@ export function SubmissionReviewView({ submissionId }: SubmissionReviewViewProps
 
   const current = detail.criteria[reviewIndex]!;
 
-  const persistLabel: Record<PersistState, string> = {
-    idle: "Local only",
+  const persistLabel: Record<PersistStatus, string> = {
+    idle: "Not saved yet",
     saving: "Saving review…",
     saved: "Saved to InsForge",
     failed: "Save failed",
     duplicate: "You've already reviewed this submission",
   };
+  const canRetry =
+    persisted.status === "failed" || persisted.status === "idle";
 
   return (
     <div className="flex flex-col gap-6">
@@ -300,9 +308,25 @@ export function SubmissionReviewView({ submissionId }: SubmissionReviewViewProps
                     {COPY.summary.subtitle}
                   </p>
                 </div>
-                <span className="whitespace-nowrap rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1 text-xs text-[var(--color-foreground-muted)]">
-                  {persistLabel[persisted]}
-                </span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="whitespace-nowrap rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1 text-xs text-[var(--color-foreground-muted)]">
+                    {persistLabel[persisted.status]}
+                  </span>
+                  {persisted.status === "failed" && persisted.error ? (
+                    <span className="max-w-xs text-right text-[11px] text-red-600">
+                      {persisted.error}
+                    </span>
+                  ) : null}
+                  {canRetry ? (
+                    <button
+                      type="button"
+                      onClick={persistReview}
+                      className="text-xs text-[var(--color-foreground-muted)] underline underline-offset-2 hover:text-[var(--color-foreground)]"
+                    >
+                      Retry save
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </CardHeader>
             <CardBody>

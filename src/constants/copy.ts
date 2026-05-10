@@ -106,8 +106,20 @@ export const COPY = {
     verdictScore: (value: number, max: number) => `Suggested score: ${value} / ${max}`,
     overrideHint: "Override the score with the buttons below if you disagree.",
     rerun: "Re-run agent",
+    rerunPanel: "Re-run panel",
     starting: "Starting…",
     fallbackBanner: "Agent fell back to a default — check evidence below.",
+    panelHeader: "Sponsor panel verdict",
+    panelThinking: "Sponsor panel is judging in parallel",
+    panelHint: (n: number) =>
+      n === 1
+        ? "1 judge on this panel — running for this criterion."
+        : `${n} sponsor reps judging in parallel — averaged into the suggested score.`,
+    panelAverage: (value: number, max: number) =>
+      `Panel average: ${value} / ${max}`,
+    panelAverageBadge: (n: number) => `avg of ${n}`,
+    seatIdle: "(waiting to start)",
+    seatScore: (value: number, max: number) => `${value} / ${max}`,
     chatHeader: "Ask the agent",
     chatPlaceholder: "Why this score? Push back on the rationale, ask for evidence…",
     chatSend: "Send",

@@ -109,6 +109,16 @@ export const JUDGE = {
   chatHistoryWindow: 12,
 } as const;
 
+/** Multi-persona panel parameters. The system runs N parallel judge calls per
+ *  criterion and averages the resulting JSON scores — no model-side averaging. */
+export const PANEL = {
+  /** Cap on parallel personas per criterion (matches buildPersonasForTrack cap). */
+  maxPersonas: 4,
+  /** Round the panel mean to the nearest multiple of this fraction of the scale step.
+   *  0.5 keeps half-steps so a 4-judge spread like 7,8,8,8 lands on 7.75 → 7.5. */
+  meanRoundStep: 0.5,
+} as const;
+
 /** PDF → page image rendering for multimodal model input. */
 export const PDF_RENDER = {
   /** Cap on pages rendered per PDF (controls token/cost + latency). */

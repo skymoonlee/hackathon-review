@@ -1,7 +1,12 @@
 "use client";
 
 import { getInsforge } from "@/lib/insforge-client";
-import type { Criterion, IntakeData, ReviewScore } from "@/types";
+import type {
+  Criterion,
+  IntakeData,
+  ParsedTrack,
+  ReviewScore,
+} from "@/types";
 
 export interface SavedSubmission {
   id: string;
@@ -12,6 +17,7 @@ export async function saveSubmission(params: {
   intake: IntakeData;
   criteria: Criterion[];
   userId: string;
+  trackSnapshot?: ParsedTrack | null;
 }): Promise<SavedSubmission | null> {
   const insforge = getInsforge();
   const conceptPdf = params.intake.conceptPdf;
@@ -33,6 +39,7 @@ export async function saveSubmission(params: {
         concept_pdf_key: conceptPdf?.key ?? null,
         concept_pdf_bucket: conceptPdf?.bucket ?? null,
         criteria: params.criteria,
+        track_snapshot: params.trackSnapshot ?? null,
         created_by: params.userId,
       },
     ])
@@ -46,13 +53,18 @@ export async function saveSubmission(params: {
   return data as SavedSubmission;
 }
 
+export type SaveReviewResult =
+  | { status: "saved" }
+  | { status: "duplicate" }
+  | { status: "failed"; message: string };
+
 export async function saveReview(params: {
   submissionId: string;
   judgeId: string;
   scores: Record<string, ReviewScore>;
   weightedTotal: number;
   normalized: number;
-}): Promise<boolean> {
+}): Promise<SaveReviewResult> {
   const insforge = getInsforge();
   const { error } = await insforge.database.from("reviews").insert([
     {
@@ -64,8 +76,14 @@ export async function saveReview(params: {
     },
   ]);
   if (error) {
-    console.error("[saveReview] failed:", error.message);
-    return false;
+    const raw = error as { code?: string; message?: string };
+    const code = raw.code ?? "";
+    const message = raw.message ?? "Unknown error";
+    console.error("[saveReview] failed:", code, message);
+    if (code === "23505" || /duplicate key|unique constraint/i.test(message)) {
+      return { status: "duplicate" };
+    }
+    return { status: "failed", message };
   }
-  return true;
+  return { status: "saved" };
 }

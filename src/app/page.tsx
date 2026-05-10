@@ -172,10 +172,13 @@ export default function HomePage() {
     setCriteria(finalCriteria);
     setPublishState("saving");
     setStep("publish");
+    const trackSnapshot =
+      parsedTracks.find((t) => t.id === intake.trackId) ?? null;
     const saved = await saveSubmission({
       intake,
       criteria: finalCriteria,
       userId: user.id,
+      trackSnapshot,
     });
     if (saved?.id) {
       router.push(ROUTES.submissionDetail(saved.id));

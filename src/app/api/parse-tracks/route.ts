@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { SERVER_ENV } from "@/config/env";
 import { HACKATHON_TRACKS } from "@/config/tracks";
 import { renderPdfPages } from "@/lib/pdf-pages";
-import type { IntakeFile, ParsedTrack } from "@/types";
+import type { IntakeFile, ParsedTrack, Sponsor } from "@/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -14,7 +14,7 @@ interface ParseBody {
   conceptPdf?: IntakeFile | null;
 }
 
-const SYSTEM_PROMPT = `You extract hackathon tracks from a hackathon's concept document and NORMALIZE them into clean, canonical category names.
+const SYSTEM_PROMPT = `You extract hackathon tracks from a hackathon's concept document and NORMALIZE them into clean, canonical category names. You ALSO extract the sponsor companies attached to each track when the source identifies them.
 Return STRICT JSON of the following shape — no prose, no markdown:
 {
   "tracks": [
@@ -22,7 +22,10 @@ Return STRICT JSON of the following shape — no prose, no markdown:
       "id": "kebab-case-stable-id",
       "name": "Canonical track name",
       "description": "One sentence describing what this track is about.",
-      "emphasis": ["short", "abstract", "tags"]
+      "emphasis": ["short", "abstract", "tags"],
+      "sponsors": [
+        { "name": "Sponsor company name", "focus": "what this sponsor cares about for this track (optional, <=8 words)" }
+      ]
     }
   ]
 }
@@ -41,6 +44,11 @@ Constraints:
 - Prefer short, well-known industry category names (e.g. "AI Agents", "AI / ML", "Developer Tools", "Consumer", "Web3", "Social Impact", "Productivity", "Creative Tools", "Infrastructure").
 - emphasis: 2-4 short, ABSTRACT, generic tags describing what the track values (e.g. "autonomy", "reasoning", "planning", "reliability", "DX", "polish", "onchain logic"). NEVER copy the source's specific product names, slogans, emojis, or decorative wording into the tags.
 - description: one neutral sentence in plain English describing the category — do not quote the source's marketing copy.
+- sponsors:
+  * Include only sponsors that the source explicitly attaches to THIS track (look for phrases like "sponsored by", "presented by", logos rendered next to the track header, or company sections that map onto a track).
+  * Use the sponsor's plain company name (e.g. "InsForge", "Nia", "Anthropic") — strip emojis, taglines, and "Inc."/"Labs" unless they are part of the canonical brand.
+  * focus: one short noun phrase describing what that sponsor cares about for this track (e.g. "backend infra", "code RAG", "developer experience"). Omit if the source gives no signal.
+  * If a track has no identifiable sponsors, omit the sponsors field entirely (do not invent sponsors).
 - If the source materials are insufficient, infer reasonable tracks from any signal provided.`;
 
 function fallbackTracks(): ParsedTrack[] {
@@ -106,9 +114,29 @@ function coerceTracks(raw: unknown): ParsedTrack[] {
           .filter((x) => x.length > 0)
           .slice(0, 6)
       : undefined;
-    out.push({ id, name, description, emphasis });
+    const sponsors = coerceSponsors(t.sponsors);
+    out.push({ id, name, description, emphasis, sponsors });
   }
   return out;
+}
+
+function coerceSponsors(raw: unknown): Sponsor[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: Sponsor[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (!isRecord(item)) continue;
+    const name = typeof item.name === "string" ? sanitizeName(item.name) : "";
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const focusRaw = typeof item.focus === "string" ? sanitizeName(item.focus) : "";
+    const focus = focusRaw ? focusRaw.slice(0, 80) : undefined;
+    out.push(focus ? { name, focus } : { name });
+    if (out.length >= 4) break;
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 async function buildUserContent(
