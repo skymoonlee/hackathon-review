@@ -87,7 +87,7 @@ export interface RepoFile {
 }
 
 export interface RepoContext {
-  source: "nia" | "fallback" | "none";
+  source: "github" | "fallback" | "none";
   reason?: string;
   owner?: string;
   repo?: string;

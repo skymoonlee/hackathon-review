@@ -1,15 +1,21 @@
-import { FLOW_STEPS, type FlowStepKey } from "@/config/global";
+import { FLOW_STEPS } from "@/config/global";
 import { cn } from "@/lib/cn";
 
-interface StepperProps {
-  current: FlowStepKey;
+interface StepDefinition {
+  key: string;
+  label: string;
 }
 
-export function Stepper({ current }: StepperProps) {
-  const currentIndex = FLOW_STEPS.findIndex((s) => s.key === current);
+interface StepperProps {
+  current: string;
+  steps?: readonly StepDefinition[];
+}
+
+export function Stepper({ current, steps = FLOW_STEPS }: StepperProps) {
+  const currentIndex = steps.findIndex((s) => s.key === current);
   return (
     <ol className="flex items-center gap-2 text-xs">
-      {FLOW_STEPS.map((step, idx) => {
+      {steps.map((step, idx) => {
         const state =
           idx < currentIndex ? "done" : idx === currentIndex ? "active" : "pending";
         return (
@@ -34,7 +40,7 @@ export function Stepper({ current }: StepperProps) {
             >
               {step.label}
             </span>
-            {idx < FLOW_STEPS.length - 1 ? (
+            {idx < steps.length - 1 ? (
               <span className="ml-1 hidden h-px w-8 bg-[var(--color-border-strong)] sm:inline-block" />
             ) : null}
           </li>

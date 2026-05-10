@@ -1,6 +1,9 @@
-import { spawn } from "node:child_process";
+// GitHub repo context fetcher.
+// Originally backed by the `nia` CLI; now uses the GitHub REST API directly so it
+// works on serverless platforms (Vercel) where no CLI binary is available.
+// Function names are kept for backwards compatibility with existing call sites.
+
 import { SERVER_ENV } from "@/config/env";
-import { NIA } from "@/config/global";
 
 export interface RepoCoord {
   owner: string;
@@ -8,12 +11,13 @@ export interface RepoCoord {
 }
 
 export class NiaError extends Error {
-  constructor(message: string, public readonly stderr?: string) {
+  constructor(message: string, public readonly status?: number) {
     super(message);
     this.name = "NiaError";
   }
 }
 
+const GITHUB_API = "https://api.github.com";
 const GITHUB_HOST_RE = /^https?:\/\/github\.com\/([^/\s]+)\/([^/\s#?]+)/i;
 
 export function parseGitHubUrl(input: string): RepoCoord | null {
@@ -31,97 +35,161 @@ export function parseGitHubUrl(input: string): RepoCoord | null {
   return null;
 }
 
-interface RunOptions {
-  timeoutMs?: number;
-  maxBytes?: number;
+function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    accept: "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28",
+    "user-agent": "hackathon-review",
+  };
+  if (SERVER_ENV.githubToken) headers.authorization = `Bearer ${SERVER_ENV.githubToken}`;
+  return headers;
 }
 
-function runNia(args: string[], opts: RunOptions = {}): Promise<string> {
-  const timeoutMs = opts.timeoutMs ?? NIA.defaultTimeoutMs;
-  const maxBytes = opts.maxBytes ?? NIA.maxStdoutBytes;
-
-  return new Promise((resolve, reject) => {
-    const env: NodeJS.ProcessEnv = { ...process.env };
-    if (SERVER_ENV.niaApiKey) env.NIA_API_KEY = SERVER_ENV.niaApiKey;
-
-    const child = spawn(NIA.binary, [...args, "--no-color"], {
-      env,
-      shell: process.platform === "win32",
-    });
-
-    let stdout = "";
-    let stderr = "";
-    let killed = false;
-    const timer = setTimeout(() => {
-      killed = true;
-      child.kill("SIGTERM");
-    }, timeoutMs);
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      if (stdout.length < maxBytes) stdout += chunk.toString("utf8");
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      if (stderr.length < maxBytes) stderr += chunk.toString("utf8");
-    });
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      reject(new NiaError(`Failed to spawn nia: ${err.message}`));
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (killed) {
-        return reject(new NiaError(`nia timed out after ${timeoutMs}ms`, stderr));
-      }
-      if (code !== 0) {
-        return reject(new NiaError(`nia exited with code ${code}`, stderr));
-      }
-      resolve(stdout);
-    });
-  });
+async function ghFetch(url: string): Promise<Response> {
+  const res = await fetch(url, { headers: authHeaders(), cache: "no-store" });
+  return res;
 }
 
-/** `nia github tree owner/repo --path <path>` — returns raw stdout (line-per-entry). */
-export async function githubTree(coord: RepoCoord, path?: string): Promise<string> {
-  const args = ["github", "tree", `${coord.owner}/${coord.repo}`];
-  if (path) args.push("--path", path);
-  return runNia(args);
+interface RepoMeta {
+  default_branch: string;
 }
 
-/** `nia github read owner/repo path [--start --end]` */
-export async function githubRead(
-  coord: RepoCoord,
-  path: string,
-  start?: number,
-  end?: number,
-): Promise<string> {
-  const args = ["github", "read", `${coord.owner}/${coord.repo}`, path];
-  if (start !== undefined) args.push("--start", String(start));
-  if (end !== undefined) args.push("--end", String(end));
-  return runNia(args);
+interface TreeEntry {
+  path: string;
+  type: "blob" | "tree" | "commit";
 }
 
-/** Read a file but cap the response size. Returns "" if not found. */
+interface TreeResponse {
+  tree: TreeEntry[];
+  truncated: boolean;
+}
+
+interface RepoSnapshot {
+  defaultBranch: string;
+  entries: TreeEntry[];
+  truncated: boolean;
+}
+
+const snapshotCache = new Map<string, Promise<RepoSnapshot>>();
+
+function snapshotKey(coord: RepoCoord): string {
+  return `${coord.owner.toLowerCase()}/${coord.repo.toLowerCase()}`;
+}
+
+async function getSnapshot(coord: RepoCoord): Promise<RepoSnapshot> {
+  const key = snapshotKey(coord);
+  const cached = snapshotCache.get(key);
+  if (cached) return cached;
+
+  const promise = (async (): Promise<RepoSnapshot> => {
+    const metaRes = await ghFetch(`${GITHUB_API}/repos/${coord.owner}/${coord.repo}`);
+    if (!metaRes.ok) {
+      throw new NiaError(
+        `GitHub repo metadata failed (${metaRes.status} ${metaRes.statusText})`,
+        metaRes.status,
+      );
+    }
+    const meta = (await metaRes.json()) as RepoMeta;
+    const branch = meta.default_branch;
+
+    const treeRes = await ghFetch(
+      `${GITHUB_API}/repos/${coord.owner}/${coord.repo}/git/trees/${encodeURIComponent(
+        branch,
+      )}?recursive=1`,
+    );
+    if (!treeRes.ok) {
+      throw new NiaError(
+        `GitHub tree fetch failed (${treeRes.status} ${treeRes.statusText})`,
+        treeRes.status,
+      );
+    }
+    const treeJson = (await treeRes.json()) as TreeResponse;
+    return {
+      defaultBranch: branch,
+      entries: treeJson.tree ?? [],
+      truncated: Boolean(treeJson.truncated),
+    };
+  })();
+
+  snapshotCache.set(key, promise);
+  // Drop cache on failure so the next request can retry.
+  promise.catch(() => snapshotCache.delete(key));
+  return promise;
+}
+
+/** Returns a newline-separated listing of file/directory paths in the default branch. */
+export async function githubTree(coord: RepoCoord): Promise<string> {
+  const snap = await getSnapshot(coord);
+  const lines = snap.entries.map((e) => (e.type === "tree" ? `${e.path}/` : e.path));
+  if (snap.truncated) lines.push("… (tree truncated by GitHub API)");
+  return lines.join("\n");
+}
+
+/** Read a file at HEAD of the default branch via the Contents API; returns "" if missing. */
 export async function githubReadSafe(
   coord: RepoCoord,
   path: string,
-  maxLines = NIA.maxFileLines,
+  maxLines = 400,
 ): Promise<string> {
   try {
-    const out = await githubRead(coord, path, 1, maxLines);
-    return out;
+    const res = await ghFetch(
+      `${GITHUB_API}/repos/${coord.owner}/${coord.repo}/contents/${encodeURI(path)}`,
+    );
+    if (!res.ok) return "";
+    const data = (await res.json()) as
+      | { content?: string; encoding?: string; type?: string; size?: number }
+      | { content?: string; encoding?: string; type?: string; size?: number }[];
+    if (Array.isArray(data)) return ""; // path was a directory
+    if (data.type !== "file" || !data.content || data.encoding !== "base64") return "";
+    const decoded = Buffer.from(data.content, "base64").toString("utf8");
+    const lines = decoded.split(/\r?\n/);
+    if (lines.length <= maxLines) return decoded;
+    return lines.slice(0, maxLines).join("\n");
   } catch {
     return "";
   }
 }
 
-/** `nia github glob owner/repo pattern` */
+function globToRegex(pattern: string): RegExp {
+  // Tokenize to safely handle `**` vs `*`.
+  let out = "^";
+  let i = 0;
+  while (i < pattern.length) {
+    const ch = pattern[i]!;
+    if (ch === "*") {
+      if (pattern[i + 1] === "*") {
+        // `**` matches any number of path segments (including zero).
+        out += ".*";
+        i += 2;
+        // Eat a trailing slash so `src/**/*.ts` works when `**` matches empty.
+        if (pattern[i] === "/") i += 1;
+      } else {
+        out += "[^/]*";
+        i += 1;
+      }
+    } else if (ch === "?") {
+      out += "[^/]";
+      i += 1;
+    } else if (/[.+^${}()|[\]\\]/.test(ch)) {
+      out += `\\${ch}`;
+      i += 1;
+    } else {
+      out += ch;
+      i += 1;
+    }
+  }
+  out += "$";
+  return new RegExp(out);
+}
+
+/** Returns repo paths that match a glob like `src/**\/*.ts` (matched against the cached tree). */
 export async function githubGlob(coord: RepoCoord, pattern: string): Promise<string[]> {
   try {
-    const out = await runNia(["github", "glob", `${coord.owner}/${coord.repo}`, pattern]);
-    return out
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
+    const snap = await getSnapshot(coord);
+    const re = globToRegex(pattern);
+    return snap.entries
+      .filter((e) => e.type === "blob" && re.test(e.path))
+      .map((e) => e.path);
   } catch {
     return [];
   }

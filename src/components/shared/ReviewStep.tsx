@@ -14,6 +14,7 @@ import type {
   JudgeVerdict,
   RepoContext,
   ReviewScore,
+  TrackContext,
 } from "@/types";
 
 interface ReviewStepProps {
@@ -22,6 +23,7 @@ interface ReviewStepProps {
   total: number;
   score: ReviewScore | undefined;
   intake: IntakeData;
+  trackContext: TrackContext;
   repoContext: RepoContext | null;
   verdict?: JudgeVerdict;
   chatHistory?: JudgeChatMessage[];
@@ -45,6 +47,7 @@ export function ReviewStep({
   total,
   score,
   intake,
+  trackContext,
   repoContext,
   verdict,
   chatHistory,
@@ -105,6 +108,7 @@ export function ReviewStep({
       <JudgeStream
         criterion={criterion}
         intake={intake}
+        trackContext={trackContext}
         repoContext={repoContext}
         initialVerdict={verdict}
         onVerdict={handleVerdict}
@@ -163,6 +167,7 @@ export function ReviewStep({
 
       <JudgeChat
         criterion={criterion}
+        trackContext={trackContext}
         verdict={verdict ?? null}
         repoContext={repoContext}
         history={chatHistory}

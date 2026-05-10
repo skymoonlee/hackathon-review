@@ -11,6 +11,7 @@ import type {
   IntakeData,
   JudgeVerdict,
   RepoContext,
+  TrackContext,
 } from "@/types";
 
 type StreamEvent =
@@ -27,6 +28,7 @@ type StreamEvent =
 interface JudgeStreamProps {
   criterion: Criterion;
   intake: IntakeData;
+  trackContext: TrackContext;
   repoContext: RepoContext | null;
   initialVerdict?: JudgeVerdict;
   onVerdict: (verdict: JudgeVerdict) => void;
@@ -35,6 +37,7 @@ interface JudgeStreamProps {
 export function JudgeStream({
   criterion,
   intake,
+  trackContext,
   repoContext,
   initialVerdict,
   onVerdict,
@@ -67,7 +70,7 @@ export function JudgeStream({
         method: "POST",
         headers: { "content-type": "application/json" },
         signal: controller.signal,
-        body: JSON.stringify({ criterion, intake, repoContext }),
+        body: JSON.stringify({ criterion, intake, trackContext, repoContext }),
       });
       if (!res.body) throw new Error("no stream body");
 
@@ -94,9 +97,10 @@ export function JudgeStream({
     } finally {
       setStreaming(false);
     }
-  }, [criterion, intake, repoContext, onVerdict]);
+  }, [criterion, intake, trackContext, repoContext, onVerdict]);
 
   // Auto-run when criterion changes (and on mount), unless we already have a verdict.
+  // If a GitHub URL was provided, wait for repoContext to load so the judge sees the repo signal.
   useEffect(() => {
     if (initialVerdict) {
       setThinking(initialVerdict.thinking ?? "");
@@ -104,10 +108,12 @@ export function JudgeStream({
       setPhase("done");
       return;
     }
+    const repoUrlProvided = Boolean(intake.repoUrl?.trim());
+    if (repoUrlProvided && repoContext === null) return;
     void start();
     return () => abortRef.current?.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [criterion.id]);
+  }, [criterion.id, repoContext]);
 
   // Auto-scroll the transcript while streaming.
   useEffect(() => {

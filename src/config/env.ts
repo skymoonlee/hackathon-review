@@ -14,6 +14,7 @@ export const SERVER_ENV = {
   insforgeOssHost: process.env.INSFORGE_OSS_HOST ?? "",
   niaApiKey: process.env.NIA_API_KEY ?? "",
   niaBinary: process.env.NIA_BINARY ?? "nia",
+  githubToken: process.env.GITHUB_TOKEN ?? "",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   openaiModel: process.env.OPENAI_MODEL ?? "gpt-5.5",
 } as const;

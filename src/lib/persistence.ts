@@ -14,6 +14,8 @@ export async function saveSubmission(params: {
   userId: string;
 }): Promise<SavedSubmission | null> {
   const insforge = getInsforge();
+  const conceptPdf = params.intake.conceptPdf;
+  const criteriaImage = params.intake.criteriaImage;
   const { data, error } = await insforge.database
     .from("submissions")
     .insert([
@@ -22,8 +24,14 @@ export async function saveSubmission(params: {
         repo_url: params.intake.repoUrl || null,
         product_url: params.intake.productUrl || null,
         criteria_text: params.intake.criteriaText || null,
-        criteria_image_name: params.intake.criteriaImage?.name ?? null,
-        concept_pdf_name: params.intake.conceptPdf?.name ?? null,
+        criteria_image_name: criteriaImage?.name ?? null,
+        criteria_image_url: criteriaImage?.url ?? null,
+        criteria_image_key: criteriaImage?.key ?? null,
+        criteria_image_bucket: criteriaImage?.bucket ?? null,
+        concept_pdf_name: conceptPdf?.name ?? null,
+        concept_pdf_url: conceptPdf?.url ?? null,
+        concept_pdf_key: conceptPdf?.key ?? null,
+        concept_pdf_bucket: conceptPdf?.bucket ?? null,
         criteria: params.criteria,
         created_by: params.userId,
       },

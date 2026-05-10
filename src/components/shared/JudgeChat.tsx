@@ -10,6 +10,7 @@ import type {
   JudgeChatMessage,
   JudgeVerdict,
   RepoContext,
+  TrackContext,
 } from "@/types";
 
 type StreamEvent =
@@ -19,6 +20,7 @@ type StreamEvent =
 
 interface JudgeChatProps {
   criterion: Criterion;
+  trackContext: TrackContext;
   verdict: JudgeVerdict | null;
   repoContext: RepoContext | null;
   /** Optional persisted history per criterion. */
@@ -28,6 +30,7 @@ interface JudgeChatProps {
 
 export function JudgeChat({
   criterion,
+  trackContext,
   verdict,
   repoContext,
   history,
@@ -80,6 +83,7 @@ export function JudgeChat({
         signal: controller.signal,
         body: JSON.stringify({
           criterion,
+          trackContext,
           verdict,
           repoContext,
           messages: next.slice(0, -1), // exclude the empty assistant placeholder

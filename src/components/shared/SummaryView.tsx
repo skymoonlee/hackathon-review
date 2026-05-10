@@ -10,7 +10,8 @@ import type { Criterion, ReviewScore } from "@/types";
 interface SummaryViewProps {
   criteria: Criterion[];
   scores: Record<string, ReviewScore>;
-  onRestart: () => void;
+  onDone: () => void;
+  doneLabel?: string;
 }
 
 function bandFor(ratio: number) {
@@ -20,7 +21,12 @@ function bandFor(ratio: number) {
   );
 }
 
-export function SummaryView({ criteria, scores, onRestart }: SummaryViewProps) {
+export function SummaryView({
+  criteria,
+  scores,
+  onDone,
+  doneLabel,
+}: SummaryViewProps) {
   const { weightedTotal, maxPossible, normalized } = useMemo(() => {
     let weighted = 0;
     let max = 0;
@@ -130,8 +136,8 @@ export function SummaryView({ criteria, scores, onRestart }: SummaryViewProps) {
       </div>
 
       <div className="flex items-center justify-between">
-        <Button variant="ghost" onClick={onRestart}>
-          {COPY.summary.restart}
+        <Button variant="ghost" onClick={onDone}>
+          {doneLabel ?? COPY.summary.restart}
         </Button>
         <Button variant="secondary" onClick={downloadJson}>
           {COPY.summary.download}

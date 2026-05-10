@@ -6,12 +6,14 @@ import type {
   JudgeChatMessage,
   JudgeVerdict,
   RepoContext,
+  TrackContext,
 } from "@/types";
 
 export const runtime = "nodejs";
 
 interface Body {
   criterion?: Criterion;
+  trackContext?: TrackContext;
   verdict?: JudgeVerdict;
   repoContext?: RepoContext;
   messages?: JudgeChatMessage[];
@@ -26,8 +28,18 @@ If the user pushes back, be willing to revise — say what would change your min
 Never invent files or behavior you weren't shown. If the repo signal doesn't contain the answer, say so plainly.`;
 
 function buildContextMessage(body: Body): string {
-  const { criterion, verdict, repoContext } = body;
-  const lines: string[] = [
+  const { criterion, trackContext, verdict, repoContext } = body;
+  const lines: string[] = [];
+  if (trackContext) {
+    lines.push("## HACKATHON TRACK");
+    lines.push(`${trackContext.name}${trackContext.tagline ? ` — ${trackContext.tagline}` : ""}`);
+    if (trackContext.description) lines.push(trackContext.description);
+    if (trackContext.emphasis && trackContext.emphasis.length > 0) {
+      lines.push(`Emphasis: ${trackContext.emphasis.join(", ")}`);
+    }
+    lines.push("");
+  }
+  lines.push(
     "## CRITERION",
     `${criterion!.title} — ${criterion!.description}`,
     `Scale: ${criterion!.scale.kind} (${criterion!.scale.min}–${criterion!.scale.max})`,
@@ -35,7 +47,7 @@ function buildContextMessage(body: Body): string {
     "## YOUR PRIOR VERDICT",
     `Score: ${verdict!.value} / ${criterion!.scale.max}`,
     `Rationale: ${verdict!.rationale}`,
-  ];
+  );
   if (verdict!.evidence?.length) {
     lines.push("Evidence cited:");
     for (const e of verdict!.evidence) lines.push(`- ${e}`);
@@ -47,7 +59,7 @@ function buildContextMessage(body: Body): string {
   }
   lines.push("");
   lines.push("## REPO SIGNAL");
-  if (!repoContext || repoContext.source !== "nia") {
+  if (!repoContext || repoContext.source !== "github") {
     lines.push(`(unavailable: ${repoContext?.reason ?? "no signal"})`);
   } else {
     lines.push(`Repo: ${repoContext.owner}/${repoContext.repo}`);

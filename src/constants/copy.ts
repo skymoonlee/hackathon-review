@@ -1,9 +1,9 @@
 export const COPY = {
   hero: {
-    eyebrow: "Hackathon judging, simplified",
-    title: "Set your rubric. Score one thing at a time.",
+    eyebrow: "Register a project",
+    title: "Submit a project for the panel to judge.",
     subtitle:
-      "Paste the repo and product links, add your judging criteria below, then walk through them one by one. Sign in if you want your reviews saved across devices.",
+      "Paste the repo and product links and lock in the rubric. Once published, every judge sees the same project and the same criteria from the Submissions tab.",
   },
   intake: {
     repoUrl: {
@@ -60,13 +60,13 @@ export const COPY = {
   criteria: {
     title: "Judging rubric",
     subtitle:
-      "Add the criteria you'll use to judge this project. Weights are auto-normalized — they don't need to sum to exactly 1.",
+      "Lock in the rubric every judge will use. Weights are auto-normalized — they don't need to sum to exactly 1.",
     addRow: "Add criterion",
     removeRow: "Remove",
     suggest: "Suggest from attachments",
     suggesting: "Reading attachments…",
     suggestNoFiles: "Attach a criteria image or concept PDF first.",
-    startReview: "Start review",
+    startReview: "Publish submission",
     back: "Back to intake",
     weightsHint: "Tip: weights get normalized to 100% on submit.",
     columns: {
@@ -119,7 +119,59 @@ export const COPY = {
     subtitle: "Final scores and weighted average across all criteria.",
     totalLabel: "Weighted total",
     restart: "Start a new review",
+    backToSubmission: "Back to submission",
     download: "Download as JSON",
+  },
+  submissions: {
+    eyebrow: "All registered projects",
+    title: "Submissions",
+    subtitle:
+      "Pick a project to review. Each project ships with its own locked rubric — every judge scores against the same criteria.",
+    emptyTitle: "No submissions yet",
+    emptyBody:
+      "Once an organizer registers a project from the Register tab, it will show up here for the panel to score.",
+    register: "Register a project →",
+    columns: {
+      project: "Project",
+      track: "Track",
+      criteria: "Criteria",
+      reviews: "Reviews",
+      score: "Avg score",
+      action: "",
+    },
+    open: "Open →",
+    loading: "Loading submissions…",
+    failed: "Couldn't load submissions — try refreshing.",
+    guest: "Sign in to browse submissions and start judging.",
+    reviewsCount: (n: number) => `${n} review${n === 1 ? "" : "s"}`,
+    pending: "—",
+  },
+  submissionDetail: {
+    eyebrow: "Submission",
+    repoLabel: "GitHub repository",
+    productLabel: "Product website",
+    pdfLabel: "Concept PDF",
+    imageLabel: "Criteria image",
+    notesLabel: "Intake notes",
+    rubricTitle: "Judging rubric",
+    rubricSubtitle: "Every judge scores against this exact set of criteria.",
+    reviewsTitle: "Reviews so far",
+    reviewsEmpty: "No judges have scored this submission yet — be the first.",
+    startReview: "Start your review →",
+    alreadyReviewed: "You've already submitted a review for this project.",
+    backToList: "← Back to submissions",
+    loading: "Loading submission…",
+    notFound: "Submission not found.",
+    guest: "Sign in to view this submission and start judging.",
+    judgeColumn: "Judge",
+    scoreColumn: "Score",
+    submittedAtColumn: "Submitted",
+  },
+  publish: {
+    title: "Publishing…",
+    saving: "Saving submission to InsForge",
+    failed: "Couldn't publish submission. Try again.",
+    guestBlock: "Sign in to publish a submission so the panel can review it.",
   },
   guest: {
     banner:

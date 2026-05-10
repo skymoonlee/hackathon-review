@@ -1,20 +1,32 @@
 import OpenAI from "openai";
 import { JUDGE } from "@/config/global";
 import { SERVER_ENV } from "@/config/env";
-import type { Criterion, IntakeData, RepoContext } from "@/types";
+import type {
+  Criterion,
+  IntakeData,
+  RepoContext,
+  TrackContext,
+} from "@/types";
 
 export const runtime = "nodejs";
 
 interface Body {
   criterion?: Criterion;
   intake?: Pick<IntakeData, "trackId" | "repoUrl" | "productUrl" | "criteriaText">;
+  trackContext?: TrackContext;
   repoContext?: RepoContext;
 }
 
 const SYSTEM_PROMPT = `You are an expert hackathon judge scoring ONE rubric criterion at a time.
 
+Fairness rules:
+- Every team in the same track is judged against the SAME rubric. Do not invent your own criteria.
+- Anchor "what great looks like" to the criterion's description. The description's "Top score: …" wording is the bar for the maximum value on the scale.
+- Interpret the criterion through the lens of the provided track context (its name, tagline, description, emphasis). The same word can mean different things across tracks — use the track context to disambiguate.
+- Do NOT let the project's URL, brand, or category bias the score outside what the rubric measures.
+
 Process you MUST follow, in order, in plain text:
-1. Reflect on the criterion and what "great" looks like for it on this specific project.
+1. Reflect on the criterion AS DEFINED, given the track context, and what "great" looks like on this specific project.
 2. Walk the repo signal you were given (file tree, README, key files, shape) and pull out 2–4 concrete observations relevant to THIS criterion. Quote file paths.
 3. Weigh strengths vs. gaps for this criterion. Be specific. No generic praise.
 4. Decide a numeric score within the criterion's scale.
@@ -56,17 +68,30 @@ function repoSection(ctx: RepoContext | undefined): string {
 
 function buildUserMessage(body: Body): string {
   const c = body.criterion!;
-  const lines: string[] = [
-    `Hackathon track id: ${body.intake?.trackId ?? "general"}`,
-    `Project repo URL: ${body.intake?.repoUrl || "(none)"}`,
-    `Product URL: ${body.intake?.productUrl || "(none)"}`,
-  ];
+  const t = body.trackContext;
+  const lines: string[] = [];
+
+  lines.push("HACKATHON TRACK (every team in this track is judged under the same rubric):");
+  if (t) {
+    lines.push(`- id: ${t.id}`);
+    lines.push(`- name: ${t.name}`);
+    if (t.tagline) lines.push(`- tagline: ${t.tagline}`);
+    if (t.description) lines.push(`- description: ${t.description}`);
+    if (t.emphasis && t.emphasis.length > 0) {
+      lines.push(`- emphasis: ${t.emphasis.join(", ")}`);
+    }
+  } else {
+    lines.push(`- id: ${body.intake?.trackId ?? "general"}`);
+  }
+  lines.push("");
+  lines.push(`Project repo URL: ${body.intake?.repoUrl || "(none)"}`);
+  lines.push(`Product URL: ${body.intake?.productUrl || "(none)"}`);
   if (body.intake?.criteriaText?.trim()) {
     lines.push("Judge's freeform criteria notes:");
     lines.push(body.intake.criteriaText.trim());
   }
   lines.push("");
-  lines.push("CRITERION TO SCORE:");
+  lines.push("CRITERION TO SCORE (interpret strictly within the track context above):");
   lines.push(`- id: ${c.id}`);
   lines.push(`- title: ${c.title}`);
   lines.push(`- description: ${c.description}`);

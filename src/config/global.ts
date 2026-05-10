@@ -6,11 +6,15 @@ export const BRAND = {
 
 export const ROUTES = {
   home: "/",
+  submissions: "/submissions",
+  submissionDetail: (id: string) => `/submissions/${id}`,
+  submissionReview: (id: string) => `/submissions/${id}/review`,
   leaderboard: "/leaderboard",
 } as const;
 
 export const NAV_LINKS = [
-  { key: "home", label: "Review", href: ROUTES.home },
+  { key: "home", label: "Register", href: ROUTES.home },
+  { key: "submissions", label: "Submissions", href: ROUTES.submissions },
   { key: "leaderboard", label: "Leaderboard", href: ROUTES.leaderboard },
 ] as const;
 
@@ -19,11 +23,16 @@ export type NavKey = (typeof NAV_LINKS)[number]["key"];
 export const FLOW_STEPS = [
   { key: "intake", label: "Intake" },
   { key: "criteria", label: "Criteria" },
-  { key: "review", label: "Review" },
+  { key: "publish", label: "Publish" },
+] as const;
+
+export const REVIEW_FLOW_STEPS = [
+  { key: "review", label: "Score" },
   { key: "summary", label: "Summary" },
 ] as const;
 
 export type FlowStepKey = (typeof FLOW_STEPS)[number]["key"];
+export type ReviewFlowStepKey = (typeof REVIEW_FLOW_STEPS)[number]["key"];
 
 export const ACCEPTED_FILES = {
   criteriaImage: {

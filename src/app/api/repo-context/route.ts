@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { NIA } from "@/config/global";
-import { SERVER_ENV } from "@/config/env";
 import {
   githubGlob,
   githubReadSafe,
@@ -34,17 +33,6 @@ export async function POST(request: Request) {
     return NextResponse.json(ctx);
   }
 
-  if (!SERVER_ENV.niaApiKey) {
-    const ctx: RepoContext = {
-      source: "fallback",
-      reason: "missing_nia_key",
-      owner: coord.owner,
-      repo: coord.repo,
-      files: [],
-    };
-    return NextResponse.json(ctx);
-  }
-
   try {
     const treeRaw = await githubTree(coord);
     const tree = clipLines(treeRaw, NIA.treeLineLimit);
@@ -64,7 +52,7 @@ export async function POST(request: Request) {
     const shape = Array.from(new Set(shapeResults.flat())).slice(0, NIA.shapeGlobLimit);
 
     const ctx: RepoContext = {
-      source: "nia",
+      source: "github",
       owner: coord.owner,
       repo: coord.repo,
       tree,
@@ -73,7 +61,7 @@ export async function POST(request: Request) {
     };
     return NextResponse.json(ctx);
   } catch (err) {
-    console.error("[repo-context] Nia call failed:", err);
+    console.error("[repo-context] GitHub fetch failed:", err);
     const ctx: RepoContext = {
       source: "fallback",
       reason: err instanceof Error ? err.message : "unknown",

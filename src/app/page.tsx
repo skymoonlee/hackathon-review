@@ -1,32 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/shared/Header";
 import { Stepper } from "@/components/shared/Stepper";
 import { IntakeForm } from "@/components/shared/IntakeForm";
 import { CriteriaTable } from "@/components/shared/CriteriaTable";
-import { ReviewStep } from "@/components/shared/ReviewStep";
-import { SummaryView } from "@/components/shared/SummaryView";
 import { useAuth } from "@/components/shared/AuthProvider";
 import { CUSTOM_PRESET_VALUE } from "@/components/shared/PresetSelector";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { COPY } from "@/constants/copy";
-import { type FlowStepKey } from "@/config/global";
+import { ROUTES, type FlowStepKey } from "@/config/global";
 import { DEFAULT_TRACK_ID, getTrack } from "@/config/tracks";
 import { generateCriteria } from "@/lib/mock-ai";
 import { parseTracksFromIntake } from "@/lib/parse-tracks";
 import { fetchPresets } from "@/lib/presets";
-import { saveReview, saveSubmission } from "@/lib/persistence";
+import { saveSubmission } from "@/lib/persistence";
+import { normalizeWeights } from "@/lib/track-context";
 import type {
   Criterion,
   HackathonPreset,
   IntakeData,
-  JudgeChatMessage,
-  JudgeVerdict,
   ParsedTrack,
-  RepoContext,
-  ReviewScore,
 } from "@/types";
 
 const EMPTY_INTAKE: IntakeData = {
@@ -54,7 +52,7 @@ function resolveDisplayTrack(
     return {
       id: parsed.id,
       name: parsed.name,
-      tagline: parsed.emphasis?.[0] ?? "Parsed track",
+      tagline: parsed.tagline ?? parsed.emphasis?.[0] ?? "Parsed track",
       description: parsed.description,
     };
   }
@@ -67,37 +65,18 @@ function resolveDisplayTrack(
   };
 }
 
-type PersistState = "idle" | "saving" | "saved" | "failed" | "guest";
-
-function normalizeWeights(criteria: Criterion[]): Criterion[] {
-  const total = criteria.reduce((s, c) => s + (c.weight > 0 ? c.weight : 0), 0);
-  if (total <= 0) {
-    const even = 1 / Math.max(criteria.length, 1);
-    return criteria.map((c) => ({ ...c, weight: even }));
-  }
-  return criteria.map((c) => ({
-    ...c,
-    weight: (c.weight > 0 ? c.weight : 0) / total,
-  }));
-}
+type PublishState = "idle" | "saving" | "failed" | "guest";
 
 export default function HomePage() {
+  const router = useRouter();
   const { user } = useAuth();
   const [step, setStep] = useState<FlowStepKey>("intake");
   const [intake, setIntake] = useState<IntakeData>(EMPTY_INTAKE);
   const [parsedTracks, setParsedTracks] = useState<ParsedTrack[]>([]);
   const [criteria, setCriteria] = useState<Criterion[]>([]);
-  const [scores, setScores] = useState<Record<string, ReviewScore>>({});
-  const [reviewIndex, setReviewIndex] = useState(0);
   const [parsingTracks, setParsingTracks] = useState(false);
   const [suggestingCriteria, setSuggestingCriteria] = useState(false);
-  const [submissionId, setSubmissionId] = useState<string | null>(null);
-  const [persisted, setPersisted] = useState<PersistState>("idle");
-  const [repoContext, setRepoContext] = useState<RepoContext | null>(null);
-  const [verdicts, setVerdicts] = useState<Record<string, JudgeVerdict>>({});
-  const [chatHistories, setChatHistories] = useState<
-    Record<string, JudgeChatMessage[]>
-  >({});
+  const [publishState, setPublishState] = useState<PublishState>("idle");
   const [presets, setPresets] = useState<HackathonPreset[]>([]);
   const [presetsLoading, setPresetsLoading] = useState(true);
   const [selectedPresetSlug, setSelectedPresetSlug] = useState<string>(
@@ -167,11 +146,8 @@ export default function HomePage() {
     setIntake(data);
     const chosen = parsedTracks.find((t) => t.id === data.trackId);
     if (chosen?.criteria && chosen.criteria.length > 0) {
-      // Preset-supplied rubric — skip the suggest step entirely.
       setCriteria(chosen.criteria.map((c) => ({ ...c })));
     } else if (criteria.length === 0) {
-      // No preset: seed from the default template; the criteria step lets the
-      // user refine via "Suggest from attachments".
       setCriteria([...getTrack(DEFAULT_TRACK_ID).template]);
     }
     setStep("criteria");
@@ -182,137 +158,37 @@ export default function HomePage() {
     try {
       const generated = await generateCriteria(intake);
       setCriteria(generated);
-      setScores({});
-      setReviewIndex(0);
     } finally {
       setSuggestingCriteria(false);
     }
   }
 
-  async function handleStartReview() {
+  async function handlePublish() {
+    if (!user) {
+      setPublishState("guest");
+      return;
+    }
     const finalCriteria = normalizeWeights(criteria);
     setCriteria(finalCriteria);
-    setScores({});
-    setVerdicts({});
-    setChatHistories({});
-    setReviewIndex(0);
-    setSubmissionId(null);
-    setStep("review");
-    void fetchRepoContext(intake.repoUrl);
-    if (user) {
-      const saved = await saveSubmission({
-        intake,
-        criteria: finalCriteria,
-        userId: user.id,
-      });
-      setSubmissionId(saved?.id ?? null);
-    }
-  }
-
-  async function fetchRepoContext(repoUrl: string) {
-    setRepoContext(null);
-    try {
-      const res = await fetch("/api/repo-context", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ repoUrl }),
-      });
-      if (!res.ok) return;
-      const ctx = (await res.json()) as RepoContext;
-      setRepoContext(ctx);
-    } catch (err) {
-      console.error("[repo-context] fetch failed:", err);
-      setRepoContext({ source: "fallback", reason: "fetch_failed", files: [] });
-    }
-  }
-
-  function handleVerdictChange(verdict: JudgeVerdict) {
-    setVerdicts((prev) => ({ ...prev, [verdict.criterionId]: verdict }));
-  }
-
-  function handleChatHistoryChange(criterionId: string, messages: JudgeChatMessage[]) {
-    setChatHistories((prev) => ({ ...prev, [criterionId]: messages }));
-  }
-
-  function handleScoreChange(score: ReviewScore) {
-    setScores((prev) => ({ ...prev, [score.criterionId]: score }));
-  }
-
-  const summary = useMemo(() => {
-    let weighted = 0;
-    let max = 0;
-    for (const c of criteria) {
-      const s = scores[c.id]?.value ?? c.scale.min;
-      weighted += s * c.weight;
-      max += c.scale.max * c.weight;
-    }
-    return {
-      weightedTotal: weighted,
-      maxPossible: max,
-      normalized: max > 0 ? weighted / max : 0,
-    };
-  }, [criteria, scores]);
-
-  async function persistReview() {
-    if (!user) {
-      setPersisted("guest");
-      return;
-    }
-    if (!submissionId) {
-      setPersisted("failed");
-      return;
-    }
-    setPersisted("saving");
-    const ok = await saveReview({
-      submissionId,
-      judgeId: user.id,
-      scores,
-      weightedTotal: Number(summary.weightedTotal.toFixed(3)),
-      normalized: Number(summary.normalized.toFixed(4)),
+    setPublishState("saving");
+    setStep("publish");
+    const saved = await saveSubmission({
+      intake,
+      criteria: finalCriteria,
+      userId: user.id,
     });
-    setPersisted(ok ? "saved" : "failed");
-  }
-
-  async function handleNext() {
-    if (reviewIndex < criteria.length - 1) {
-      setReviewIndex((i) => i + 1);
+    if (saved?.id) {
+      router.push(ROUTES.submissionDetail(saved.id));
     } else {
-      setStep("summary");
-      await persistReview();
+      setPublishState("failed");
+      setStep("criteria");
     }
   }
 
-  function handleBack() {
-    if (reviewIndex > 0) setReviewIndex((i) => i - 1);
-  }
-
-  function handleRestart() {
-    setIntake(EMPTY_INTAKE);
-    setParsedTracks([]);
-    setCriteria([]);
-    setScores({});
-    setVerdicts({});
-    setChatHistories({});
-    setRepoContext(null);
-    setReviewIndex(0);
-    setSubmissionId(null);
-    setPersisted("idle");
-    setStep("intake");
-  }
-
-  const current = criteria[reviewIndex];
   const canSuggest =
     intake.criteriaText.trim().length > 0 ||
     intake.criteriaImage !== null ||
     intake.conceptPdf !== null;
-
-  const persistLabel: Record<PersistState, string> = {
-    idle: "Local only",
-    saving: "Saving review…",
-    saved: "Saved to InsForge",
-    failed: "Save failed",
-    guest: "Guest — not saved",
-  };
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -331,6 +207,11 @@ export default function HomePage() {
               <p className="max-w-2xl text-[15px] leading-relaxed text-[var(--color-foreground-muted)]">
                 {COPY.hero.subtitle}
               </p>
+              {!user ? (
+                <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  {COPY.publish.guestBlock}
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -396,10 +277,20 @@ export default function HomePage() {
                 </div>
               </CardHeader>
               <CardBody>
+                {publishState === "failed" ? (
+                  <p className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {COPY.publish.failed}
+                  </p>
+                ) : null}
+                {publishState === "guest" ? (
+                  <p className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    {COPY.publish.guestBlock}
+                  </p>
+                ) : null}
                 <CriteriaTable
                   criteria={criteria}
                   onChange={setCriteria}
-                  onStart={handleStartReview}
+                  onStart={handlePublish}
                   onBack={() => setStep("intake")}
                   onSuggest={handleSuggestFromAttachments}
                   suggesting={suggestingCriteria}
@@ -409,56 +300,32 @@ export default function HomePage() {
             </>
           ) : null}
 
-          {step === "review" && current ? (
-            <CardBody>
-              <ReviewStep
-                criterion={current}
-                index={reviewIndex}
-                total={criteria.length}
-                score={scores[current.id]}
-                intake={intake}
-                repoContext={repoContext}
-                verdict={verdicts[current.id]}
-                chatHistory={chatHistories[current.id]}
-                onChange={handleScoreChange}
-                onVerdictChange={handleVerdictChange}
-                onChatHistoryChange={(msgs) =>
-                  handleChatHistoryChange(current.id, msgs)
-                }
-                onNext={handleNext}
-                onBack={handleBack}
-                isLast={reviewIndex === criteria.length - 1}
-              />
-            </CardBody>
-          ) : null}
-
-          {step === "summary" ? (
+          {step === "publish" ? (
             <>
               <CardHeader>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-xl font-semibold tracking-tight">
-                      {COPY.summary.title}
-                    </h2>
-                    <p className="mt-1 text-sm text-[var(--color-foreground-muted)]">
-                      {COPY.summary.subtitle}
-                    </p>
-                  </div>
-                  <span className="whitespace-nowrap rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1 text-xs text-[var(--color-foreground-muted)]">
-                    {persistLabel[persisted]}
-                  </span>
-                </div>
+                <h2 className="text-xl font-semibold tracking-tight">
+                  {COPY.publish.title}
+                </h2>
               </CardHeader>
               <CardBody>
-                <SummaryView
-                  criteria={criteria}
-                  scores={scores}
-                  onRestart={handleRestart}
-                />
+                <div className="flex flex-col items-center gap-3 py-10 text-center">
+                  <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-current border-t-transparent text-[var(--color-foreground-muted)]" />
+                  <p className="text-sm text-[var(--color-foreground-muted)]">
+                    {COPY.publish.saving}
+                  </p>
+                </div>
               </CardBody>
             </>
           ) : null}
         </Card>
+
+        <div className="mt-6 flex justify-end">
+          <Link href={ROUTES.submissions}>
+            <Button variant="ghost" size="sm">
+              Browse all submissions →
+            </Button>
+          </Link>
+        </div>
       </main>
       <footer className="border-t border-[var(--color-border)] py-6 text-center text-xs text-[var(--color-foreground-muted)]">
         Built for hackathon judging · powered by Next.js · InsForge · OpenAI · Nia
