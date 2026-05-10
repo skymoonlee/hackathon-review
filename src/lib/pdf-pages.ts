@@ -9,27 +9,43 @@ export interface PdfPageImage {
   dataUrl: string;
 }
 
-/** Strip the `data:...;base64,` prefix and return the raw payload. */
 function stripDataUrlPrefix(value: string): string {
   const comma = value.indexOf(",");
   return comma === -1 ? value : value.slice(comma + 1);
 }
 
+async function loadPdfBuffer(file: IntakeFile): Promise<Buffer | null> {
+  if (file.url) {
+    const res = await fetch(file.url);
+    if (!res.ok) {
+      console.error(`[pdf-pages] fetch ${file.url} → HTTP ${res.status}`);
+      return null;
+    }
+    const arr = await res.arrayBuffer();
+    return Buffer.from(arr);
+  }
+  if (file.base64) {
+    return Buffer.from(stripDataUrlPrefix(file.base64), "base64");
+  }
+  return null;
+}
+
 /**
- * Render an uploaded PDF (data URL, base64 payload only is also accepted)
- * into per-page PNG data URLs the multimodal model can consume directly.
+ * Render an uploaded PDF (storage URL or base64) into per-page PNG data URLs
+ * the multimodal model can consume directly.
  *
- * Returns [] when the file is missing, oversize, or fails to render —
- * callers should treat that as "no PDF signal" and continue.
+ * Returns [] when the file is missing/oversize/unfetchable so callers can
+ * just skip the PDF signal and continue.
  */
 export async function renderPdfPages(
   file: IntakeFile | null | undefined,
 ): Promise<PdfPageImage[]> {
-  if (!file || file.oversize || !file.base64) return [];
+  if (!file || file.oversize) return [];
   if (!file.type.includes("pdf")) return [];
 
   try {
-    const buffer = Buffer.from(stripDataUrlPrefix(file.base64), "base64");
+    const buffer = await loadPdfBuffer(file);
+    if (!buffer) return [];
     const pages = await pdfToPng(buffer, {
       viewportScale: PDF_RENDER.viewportScale,
       pagesToProcess: Array.from({ length: PDF_RENDER.maxPages }, (_, i) => i + 1),

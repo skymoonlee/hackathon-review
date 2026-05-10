@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Header } from "@/components/shared/Header";
 import { Stepper } from "@/components/shared/Stepper";
 import { IntakeForm } from "@/components/shared/IntakeForm";
@@ -8,6 +8,7 @@ import { CriteriaTable } from "@/components/shared/CriteriaTable";
 import { ReviewStep } from "@/components/shared/ReviewStep";
 import { SummaryView } from "@/components/shared/SummaryView";
 import { useAuth } from "@/components/shared/AuthProvider";
+import { CUSTOM_PRESET_VALUE } from "@/components/shared/PresetSelector";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { COPY } from "@/constants/copy";
@@ -15,9 +16,11 @@ import { type FlowStepKey } from "@/config/global";
 import { DEFAULT_TRACK_ID, getTrack } from "@/config/tracks";
 import { generateCriteria } from "@/lib/mock-ai";
 import { parseTracksFromIntake } from "@/lib/parse-tracks";
+import { fetchPresets } from "@/lib/presets";
 import { saveReview, saveSubmission } from "@/lib/persistence";
 import type {
   Criterion,
+  HackathonPreset,
   IntakeData,
   JudgeChatMessage,
   JudgeVerdict,
@@ -95,8 +98,56 @@ export default function HomePage() {
   const [chatHistories, setChatHistories] = useState<
     Record<string, JudgeChatMessage[]>
   >({});
+  const [presets, setPresets] = useState<HackathonPreset[]>([]);
+  const [presetsLoading, setPresetsLoading] = useState(true);
+  const [selectedPresetSlug, setSelectedPresetSlug] = useState<string>(
+    CUSTOM_PRESET_VALUE,
+  );
 
   const selectedTrack = resolveDisplayTrack(intake.trackId, parsedTracks);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPresetsLoading(true);
+    fetchPresets()
+      .then((rows) => {
+        if (cancelled) return;
+        setPresets(rows);
+        const def = rows.find((p) => p.isDefault) ?? rows[0];
+        if (def) {
+          applyPreset(def);
+          setSelectedPresetSlug(def.slug);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPresetsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function applyPreset(preset: HackathonPreset) {
+    setParsedTracks(preset.tracks);
+    setIntake((prev) => ({
+      ...prev,
+      trackId: preset.tracks[0]?.id ?? "",
+    }));
+    setCriteria([]);
+  }
+
+  function handlePresetChange(slug: string) {
+    setSelectedPresetSlug(slug);
+    if (slug === CUSTOM_PRESET_VALUE) {
+      setParsedTracks([]);
+      setIntake((prev) => ({ ...prev, trackId: "" }));
+      setCriteria([]);
+      return;
+    }
+    const preset = presets.find((p) => p.slug === slug);
+    if (preset) applyPreset(preset);
+  }
 
   async function handleParseTracks(data: IntakeData) {
     setIntake(data);
@@ -114,9 +165,13 @@ export default function HomePage() {
 
   function handleIntakeSubmit(data: IntakeData) {
     setIntake(data);
-    if (criteria.length === 0) {
-      // Seed from the default template; the criteria step lets the user
-      // refine via "Suggest from attachments" using the chosen parsed track.
+    const chosen = parsedTracks.find((t) => t.id === data.trackId);
+    if (chosen?.criteria && chosen.criteria.length > 0) {
+      // Preset-supplied rubric — skip the suggest step entirely.
+      setCriteria(chosen.criteria.map((c) => ({ ...c })));
+    } else if (criteria.length === 0) {
+      // No preset: seed from the default template; the criteria step lets the
+      // user refine via "Suggest from attachments".
       setCriteria([...getTrack(DEFAULT_TRACK_ID).template]);
     }
     setStep("criteria");
@@ -314,6 +369,10 @@ export default function HomePage() {
                   loading={parsingTracks}
                   parsing={parsingTracks}
                   parsedTracks={parsedTracks}
+                  presets={presets}
+                  presetsLoading={presetsLoading}
+                  selectedPresetSlug={selectedPresetSlug}
+                  onPresetChange={handlePresetChange}
                   onSubmit={handleIntakeSubmit}
                   onParseTracks={handleParseTracks}
                 />

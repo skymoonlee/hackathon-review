@@ -6,7 +6,15 @@ export const BRAND = {
 
 export const ROUTES = {
   home: "/",
+  leaderboard: "/leaderboard",
 } as const;
+
+export const NAV_LINKS = [
+  { key: "home", label: "Review", href: ROUTES.home },
+  { key: "leaderboard", label: "Leaderboard", href: ROUTES.leaderboard },
+] as const;
+
+export type NavKey = (typeof NAV_LINKS)[number]["key"];
 
 export const FLOW_STEPS = [
   { key: "intake", label: "Intake" },
@@ -40,6 +48,21 @@ export const MOCK_AI_LATENCY_MS = 1400;
 
 /** Files above this size keep only metadata (no base64 sent to the model). */
 export const FILE_BASE64_MAX_BYTES = 4 * 1024 * 1024; // 4 MB
+
+/** Cap for files uploaded to InsForge Storage (no JSON body limit, but bound it anyway). */
+export const FILE_STORAGE_MAX_BYTES = 50 * 1024 * 1024; // 50 MB
+
+/** Storage bucket names. */
+export const STORAGE_BUCKETS = {
+  conceptPdfs: "concept-pdfs",
+} as const;
+
+/** Database tables (must match migration filenames). */
+export const DB_TABLES = {
+  submissions: "submissions",
+  reviews: "reviews",
+  hackathonPresets: "hackathon_presets",
+} as const;
 
 /** Nia CLI integration tokens. */
 export const NIA = {
@@ -79,10 +102,10 @@ export const JUDGE = {
 
 /** PDF → page image rendering for multimodal model input. */
 export const PDF_RENDER = {
-  /** Cap on pages rendered per PDF (controls token/cost blast radius). */
-  maxPages: 8,
-  /** pdfjs viewport scale (1.0 = native, 1.5 ≈ readable for the vision model). */
-  viewportScale: 1.5,
+  /** Cap on pages rendered per PDF (controls token/cost + latency). */
+  maxPages: 4,
+  /** pdfjs viewport scale (1.0 = native, 1.2 ≈ readable + faster). */
+  viewportScale: 1.2,
   /** Output MIME for the rendered page. */
   mime: "image/png",
 } as const;

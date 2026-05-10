@@ -44,7 +44,7 @@ function runNia(args: string[], opts: RunOptions = {}): Promise<string> {
     const env: NodeJS.ProcessEnv = { ...process.env };
     if (SERVER_ENV.niaApiKey) env.NIA_API_KEY = SERVER_ENV.niaApiKey;
 
-    const child = spawn(NIA.binary, [...args, "--color=false"], {
+    const child = spawn(NIA.binary, [...args, "--no-color"], {
       env,
       shell: process.platform === "win32",
     });

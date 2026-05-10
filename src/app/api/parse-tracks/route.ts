@@ -6,6 +6,7 @@ import { renderPdfPages } from "@/lib/pdf-pages";
 import type { IntakeFile, ParsedTrack } from "@/types";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 interface ParseBody {
   criteriaText?: string;
@@ -127,7 +128,7 @@ async function buildUserContent(
       ? "(too large to attach)"
       : pdfPages.length > 0
         ? `(rendered ${pdfPages.length} page${pdfPages.length === 1 ? "" : "s"} as images below)`
-        : "(metadata only — could not render)";
+        : "(could not render — using filename only)";
     lines.push(`Concept PDF: ${body.conceptPdf.name} ${note}`);
   }
   const text = lines.join("\n");

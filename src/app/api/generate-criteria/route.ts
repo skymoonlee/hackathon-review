@@ -7,6 +7,7 @@ import { renderPdfPages } from "@/lib/pdf-pages";
 import type { Criterion, IntakeFile } from "@/types";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 interface GenerateBody {
   trackId?: string;

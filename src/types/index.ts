@@ -19,8 +19,14 @@ export interface IntakeFile {
   name: string;
   size: number;
   type: string;
-  /** Data URL (base64). Only set for files small enough to send to the model. */
+  /** Data URL (base64). Set for inline-attached files (small images). */
   base64?: string;
+  /** Public/signed storage URL when the file was uploaded to InsForge Storage. */
+  url?: string;
+  /** Storage object key (bucket-relative) — needed for delete. */
+  key?: string;
+  /** Bucket the object was uploaded to (when `url`/`key` are set). */
+  bucket?: string;
   /** True if file exceeded the size cap and was kept as metadata only. */
   oversize?: boolean;
 }
@@ -39,6 +45,18 @@ export interface ParsedTrack {
   name: string;
   description: string;
   emphasis?: readonly string[];
+  /** Optional short tagline — populated when the track came from a saved preset. */
+  tagline?: string;
+  /** Optional pre-defined rubric — populated when the track came from a saved preset. */
+  criteria?: Criterion[];
+}
+
+export interface HackathonPreset {
+  slug: string;
+  name: string;
+  description: string;
+  isDefault: boolean;
+  tracks: ParsedTrack[];
 }
 
 export interface ReviewScore {

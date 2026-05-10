@@ -2,7 +2,8 @@
 
 import { useId, useRef, useState, type DragEvent } from "react";
 import { cn } from "@/lib/cn";
-import { FILE_BASE64_MAX_BYTES } from "@/config/global";
+import { FILE_BASE64_MAX_BYTES, FILE_STORAGE_MAX_BYTES } from "@/config/global";
+import { getInsforge } from "@/lib/insforge-client";
 import type { IntakeFile } from "@/types";
 
 interface FileDropProps {
@@ -11,6 +12,12 @@ interface FileDropProps {
   helpText?: string;
   value: IntakeFile | null;
   onChange: (file: IntakeFile | null) => void;
+  /**
+   * When set, the file is uploaded to this InsForge Storage bucket and the
+   * resulting `url`/`key` are returned (no base64). When unset, the file is
+   * read as a base64 data URL inline.
+   */
+  bucket?: string;
 }
 
 function readableSize(bytes: number) {
@@ -28,25 +35,62 @@ function readAsDataURL(file: File): Promise<string> {
   });
 }
 
-export function FileDrop({ label, accept, helpText, value, onChange }: FileDropProps) {
+export function FileDrop({
+  label,
+  accept,
+  helpText,
+  value,
+  onChange,
+  bucket,
+}: FileDropProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [reading, setReading] = useState(false);
+  const [busy, setBusy] = useState<"idle" | "reading" | "uploading">("idle");
   const inputId = useId();
 
   async function handleFiles(files: FileList | null) {
     const file = files?.[0];
     if (!file) return;
-    if (file.size > FILE_BASE64_MAX_BYTES) {
+
+    const cap = bucket ? FILE_STORAGE_MAX_BYTES : FILE_BASE64_MAX_BYTES;
+    if (file.size > cap) {
       onChange({ name: file.name, size: file.size, type: file.type, oversize: true });
       return;
     }
-    setReading(true);
+
+    // Prefer inline base64 when the file fits — avoids the storage roundtrip
+    // (faster) and sidesteps RLS on the storage `objects` table for guests.
+    const fitsInline = file.size <= FILE_BASE64_MAX_BYTES;
+    if (!bucket || fitsInline) {
+      setBusy("reading");
+      try {
+        const base64 = await readAsDataURL(file);
+        onChange({ name: file.name, size: file.size, type: file.type, base64 });
+      } finally {
+        setBusy("idle");
+      }
+      return;
+    }
+
+    setBusy("uploading");
     try {
-      const base64 = await readAsDataURL(file);
-      onChange({ name: file.name, size: file.size, type: file.type, base64 });
+      const insforge = getInsforge();
+      const { data, error } = await insforge.storage.from(bucket).uploadAuto(file);
+      if (error || !data) {
+        console.error("[FileDrop] upload failed:", error);
+        onChange({ name: file.name, size: file.size, type: file.type, oversize: true });
+        return;
+      }
+      onChange({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        url: data.url,
+        key: data.key,
+        bucket,
+      });
     } finally {
-      setReading(false);
+      setBusy("idle");
     }
   }
 
@@ -91,6 +135,7 @@ export function FileDrop({ label, accept, helpText, value, onChange }: FileDropP
               <span className="text-xs text-[var(--color-foreground-muted)]">
                 {readableSize(value.size)} · {value.type || "unknown"}
                 {value.oversize ? " · too large to send to model" : ""}
+                {value.url ? " · uploaded" : ""}
               </span>
             </div>
             <button
@@ -108,7 +153,11 @@ export function FileDrop({ label, accept, helpText, value, onChange }: FileDropP
         ) : (
           <>
             <span className="text-[var(--color-foreground)]">
-              {reading ? "Reading file…" : "Click to upload, or drag & drop"}
+              {busy === "uploading"
+                ? "Uploading…"
+                : busy === "reading"
+                  ? "Reading file…"
+                  : "Click to upload, or drag & drop"}
             </span>
             {helpText ? (
               <span className="text-xs text-[var(--color-foreground-muted)]">{helpText}</span>

@@ -32,11 +32,11 @@ export const COPY = {
       "The rubric will lean on this track's emphasis. You can still tweak every row before scoring.",
     dropdownLabel: "Track",
     dropdownPlaceholder: "Select a track",
-    dropdownLocked: "Parse the concept PDF to load tracks",
+    dropdownLocked: "Pick a saved hackathon or parse a concept PDF to load tracks",
     parseButton: "Parse PDF for tracks",
     parsing: "Reading concept PDF…",
     parseHint: "Drop a concept PDF, then parse it to load the hackathon's tracks.",
-    parsedTitle: "Tracks parsed from PDF",
+    parsedTitle: "Tracks for this hackathon",
     parsedSubtitle: "Confirm the track you're judging from the dropdown above.",
     parsedColumns: {
       name: "Track",
@@ -44,6 +44,18 @@ export const COPY = {
       emphasis: "Emphasis",
     },
     parsedEmpty: "No tracks were extracted from the PDF.",
+  },
+  presets: {
+    label: "Saved hackathon",
+    description:
+      "Skip the PDF — load tracks and rubric from a saved hackathon preset.",
+    customLabel: "Custom (upload concept PDF)",
+    customDescription: "Parse tracks from your own concept PDF.",
+    loadedTag: "Loaded from preset",
+    loading: "Loading saved hackathons…",
+    empty: "No saved hackathons available.",
+    sourcePreset: (name: string) => `Tracks loaded from ${name}`,
+    sourcePdf: "Tracks parsed from concept PDF",
   },
   criteria: {
     title: "Judging rubric",
@@ -138,5 +150,29 @@ export const COPY = {
   },
   empty: {
     noCriteria: "No criteria available yet.",
+  },
+  leaderboard: {
+    eyebrow: "All-time scores",
+    title: "Leaderboard",
+    subtitle:
+      "Every reviewed project, grouped by track and ranked by weighted score. Multiple reviews on the same project are averaged.",
+    emptyTitle: "No reviews yet",
+    emptyBody:
+      "Once judges finish at least one review, scored projects will show up here grouped by track.",
+    loading: "Loading leaderboard…",
+    failed: "Couldn't load leaderboard — try refreshing.",
+    guest: "Sign in to view the leaderboard — review data is read by signed-in judges only.",
+    columns: {
+      rank: "#",
+      project: "Project",
+      links: "Links",
+      reviews: "Reviews",
+      score: "Score",
+    },
+    repoLink: "Repo",
+    productLink: "Website",
+    reviewsCount: (n: number) => `${n} review${n === 1 ? "" : "s"}`,
+    untitledTrack: "Untracked",
+    noLink: "—",
   },
 } as const;
