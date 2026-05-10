@@ -76,3 +76,13 @@ export const JUDGE = {
   maxRationaleChars: 1200,
   chatHistoryWindow: 12,
 } as const;
+
+/** PDF → page image rendering for multimodal model input. */
+export const PDF_RENDER = {
+  /** Cap on pages rendered per PDF (controls token/cost blast radius). */
+  maxPages: 8,
+  /** pdfjs viewport scale (1.0 = native, 1.5 ≈ readable for the vision model). */
+  viewportScale: 1.5,
+  /** Output MIME for the rendered page. */
+  mime: "image/png",
+} as const;

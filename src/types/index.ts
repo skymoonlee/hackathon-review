@@ -34,6 +34,13 @@ export interface IntakeData {
   conceptPdf: IntakeFile | null;
 }
 
+export interface ParsedTrack {
+  id: string;
+  name: string;
+  description: string;
+  emphasis?: readonly string[];
+}
+
 export interface ReviewScore {
   criterionId: string;
   value: number;

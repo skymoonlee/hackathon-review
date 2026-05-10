@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { Header } from "@/components/shared/Header";
 import { Stepper } from "@/components/shared/Stepper";
 import { IntakeForm } from "@/components/shared/IntakeForm";
-import { TrackSelector } from "@/components/shared/TrackSelector";
 import { CriteriaTable } from "@/components/shared/CriteriaTable";
 import { ReviewStep } from "@/components/shared/ReviewStep";
 import { SummaryView } from "@/components/shared/SummaryView";
@@ -13,23 +12,57 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { COPY } from "@/constants/copy";
 import { type FlowStepKey } from "@/config/global";
-import {
-  DEFAULT_TRACK_ID,
-  getTrack,
-  type HackathonTrackId,
-} from "@/config/tracks";
+import { DEFAULT_TRACK_ID, getTrack } from "@/config/tracks";
 import { generateCriteria } from "@/lib/mock-ai";
+import { parseTracksFromIntake } from "@/lib/parse-tracks";
 import { saveReview, saveSubmission } from "@/lib/persistence";
-import type { Criterion, IntakeData, ReviewScore } from "@/types";
+import type {
+  Criterion,
+  IntakeData,
+  JudgeChatMessage,
+  JudgeVerdict,
+  ParsedTrack,
+  RepoContext,
+  ReviewScore,
+} from "@/types";
 
 const EMPTY_INTAKE: IntakeData = {
-  trackId: DEFAULT_TRACK_ID,
+  trackId: "",
   repoUrl: "",
   productUrl: "",
   criteriaText: "",
   criteriaImage: null,
   conceptPdf: null,
 };
+
+interface DisplayTrack {
+  id: string;
+  name: string;
+  tagline: string;
+  description: string;
+}
+
+function resolveDisplayTrack(
+  trackId: string,
+  parsedTracks: ParsedTrack[],
+): DisplayTrack {
+  const parsed = parsedTracks.find((t) => t.id === trackId);
+  if (parsed) {
+    return {
+      id: parsed.id,
+      name: parsed.name,
+      tagline: parsed.emphasis?.[0] ?? "Parsed track",
+      description: parsed.description,
+    };
+  }
+  const fallback = getTrack(trackId || DEFAULT_TRACK_ID);
+  return {
+    id: fallback.id,
+    name: fallback.name,
+    tagline: fallback.tagline,
+    description: fallback.description,
+  };
+}
 
 type PersistState = "idle" | "saving" | "saved" | "failed" | "guest";
 
@@ -49,52 +82,55 @@ export default function HomePage() {
   const { user } = useAuth();
   const [step, setStep] = useState<FlowStepKey>("intake");
   const [intake, setIntake] = useState<IntakeData>(EMPTY_INTAKE);
+  const [parsedTracks, setParsedTracks] = useState<ParsedTrack[]>([]);
   const [criteria, setCriteria] = useState<Criterion[]>([]);
   const [scores, setScores] = useState<Record<string, ReviewScore>>({});
   const [reviewIndex, setReviewIndex] = useState(0);
-  const [parsing, setParsing] = useState(false);
+  const [parsingTracks, setParsingTracks] = useState(false);
+  const [suggestingCriteria, setSuggestingCriteria] = useState(false);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [persisted, setPersisted] = useState<PersistState>("idle");
+  const [repoContext, setRepoContext] = useState<RepoContext | null>(null);
+  const [verdicts, setVerdicts] = useState<Record<string, JudgeVerdict>>({});
+  const [chatHistories, setChatHistories] = useState<
+    Record<string, JudgeChatMessage[]>
+  >({});
 
-  const selectedTrack = getTrack(intake.trackId);
+  const selectedTrack = resolveDisplayTrack(intake.trackId, parsedTracks);
 
-  function handleTrackChange(trackId: HackathonTrackId) {
-    setIntake((prev) => ({ ...prev, trackId }));
-  }
-
-  async function handleParseAttachments(data: IntakeData) {
+  async function handleParseTracks(data: IntakeData) {
     setIntake(data);
-    setParsing(true);
+    setParsingTracks(true);
     try {
-      const generated = await generateCriteria(data);
-      setCriteria(generated);
-      setScores({});
-      setReviewIndex(0);
-      setStep("criteria");
+      const tracks = await parseTracksFromIntake(data);
+      setParsedTracks(tracks);
+      if (tracks.length > 0 && !data.trackId) {
+        setIntake((prev) => ({ ...prev, trackId: tracks[0].id }));
+      }
     } finally {
-      setParsing(false);
+      setParsingTracks(false);
     }
   }
 
   function handleIntakeSubmit(data: IntakeData) {
     setIntake(data);
     if (criteria.length === 0) {
-      // Seed from the selected track's template — instant, deterministic.
-      // Use "Parse from attachments" if you want AI to refine instead.
-      setCriteria([...getTrack(data.trackId).template]);
+      // Seed from the default template; the criteria step lets the user
+      // refine via "Suggest from attachments" using the chosen parsed track.
+      setCriteria([...getTrack(DEFAULT_TRACK_ID).template]);
     }
     setStep("criteria");
   }
 
   async function handleSuggestFromAttachments() {
-    setParsing(true);
+    setSuggestingCriteria(true);
     try {
       const generated = await generateCriteria(intake);
       setCriteria(generated);
       setScores({});
       setReviewIndex(0);
     } finally {
-      setParsing(false);
+      setSuggestingCriteria(false);
     }
   }
 
@@ -102,8 +138,12 @@ export default function HomePage() {
     const finalCriteria = normalizeWeights(criteria);
     setCriteria(finalCriteria);
     setScores({});
+    setVerdicts({});
+    setChatHistories({});
     setReviewIndex(0);
     setSubmissionId(null);
+    setStep("review");
+    void fetchRepoContext(intake.repoUrl);
     if (user) {
       const saved = await saveSubmission({
         intake,
@@ -112,7 +152,31 @@ export default function HomePage() {
       });
       setSubmissionId(saved?.id ?? null);
     }
-    setStep("review");
+  }
+
+  async function fetchRepoContext(repoUrl: string) {
+    setRepoContext(null);
+    try {
+      const res = await fetch("/api/repo-context", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ repoUrl }),
+      });
+      if (!res.ok) return;
+      const ctx = (await res.json()) as RepoContext;
+      setRepoContext(ctx);
+    } catch (err) {
+      console.error("[repo-context] fetch failed:", err);
+      setRepoContext({ source: "fallback", reason: "fetch_failed", files: [] });
+    }
+  }
+
+  function handleVerdictChange(verdict: JudgeVerdict) {
+    setVerdicts((prev) => ({ ...prev, [verdict.criterionId]: verdict }));
+  }
+
+  function handleChatHistoryChange(criterionId: string, messages: JudgeChatMessage[]) {
+    setChatHistories((prev) => ({ ...prev, [criterionId]: messages }));
   }
 
   function handleScoreChange(score: ReviewScore) {
@@ -169,8 +233,12 @@ export default function HomePage() {
 
   function handleRestart() {
     setIntake(EMPTY_INTAKE);
+    setParsedTracks([]);
     setCriteria([]);
     setScores({});
+    setVerdicts({});
+    setChatHistories({});
+    setRepoContext(null);
     setReviewIndex(0);
     setSubmissionId(null);
     setPersisted("idle");
@@ -208,38 +276,9 @@ export default function HomePage() {
               <p className="max-w-2xl text-[15px] leading-relaxed text-[var(--color-foreground-muted)]">
                 {COPY.hero.subtitle}
               </p>
-              {!user ? (
-                <p className="mt-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3 text-sm text-[var(--color-foreground-muted)]">
-                  {COPY.guest.banner}
-                </p>
-              ) : null}
-              <ol className="mt-6 grid gap-3 sm:grid-cols-3">
-                {COPY.howItWorks.steps.map((s, i) => (
-                  <li
-                    key={s.id}
-                    className="flex flex-col gap-1 rounded-2xl border border-[var(--color-border)] bg-white p-4"
-                  >
-                    <span className="grid h-6 w-6 place-items-center rounded-full bg-[var(--color-foreground)] text-[10px] font-semibold text-white">
-                      {i + 1}
-                    </span>
-                    <span className="text-sm font-semibold text-[var(--color-foreground)]">
-                      {s.title}
-                    </span>
-                    <span className="text-xs leading-relaxed text-[var(--color-foreground-muted)]">
-                      {s.description}
-                    </span>
-                  </li>
-                ))}
-              </ol>
             </div>
           ) : null}
         </div>
-
-        {step === "intake" ? (
-          <div className="mb-6">
-            <TrackSelector value={intake.trackId} onChange={handleTrackChange} />
-          </div>
-        ) : null}
 
         <Card>
           {step === "intake" ? (
@@ -251,23 +290,32 @@ export default function HomePage() {
                       Project intake
                     </h2>
                     <p className="mt-1 text-sm text-[var(--color-foreground-muted)]">
-                      Track:{" "}
-                      <span className="font-medium text-[var(--color-foreground)]">
-                        {selectedTrack.name}
-                      </span>{" "}
-                      — {selectedTrack.tagline}
+                      {parsedTracks.length > 0 && intake.trackId ? (
+                        <>
+                          Track:{" "}
+                          <span className="font-medium text-[var(--color-foreground)]">
+                            {selectedTrack.name}
+                          </span>{" "}
+                          — {selectedTrack.tagline}
+                        </>
+                      ) : (
+                        COPY.tracks.parseHint
+                      )}
                     </p>
                   </div>
-                  <Badge tone="info">{selectedTrack.tagline}</Badge>
+                  {parsedTracks.length > 0 && intake.trackId ? (
+                    <Badge tone="info">{selectedTrack.tagline}</Badge>
+                  ) : null}
                 </div>
               </CardHeader>
               <CardBody>
                 <IntakeForm
                   initial={intake}
-                  loading={parsing}
-                  parsing={parsing}
+                  loading={parsingTracks}
+                  parsing={parsingTracks}
+                  parsedTracks={parsedTracks}
                   onSubmit={handleIntakeSubmit}
-                  onParse={handleParseAttachments}
+                  onParseTracks={handleParseTracks}
                 />
               </CardBody>
             </>
@@ -295,7 +343,7 @@ export default function HomePage() {
                   onStart={handleStartReview}
                   onBack={() => setStep("intake")}
                   onSuggest={handleSuggestFromAttachments}
-                  suggesting={parsing}
+                  suggesting={suggestingCriteria}
                   canSuggest={canSuggest}
                 />
               </CardBody>
@@ -309,7 +357,15 @@ export default function HomePage() {
                 index={reviewIndex}
                 total={criteria.length}
                 score={scores[current.id]}
+                intake={intake}
+                repoContext={repoContext}
+                verdict={verdicts[current.id]}
+                chatHistory={chatHistories[current.id]}
                 onChange={handleScoreChange}
+                onVerdictChange={handleVerdictChange}
+                onChatHistoryChange={(msgs) =>
+                  handleChatHistoryChange(current.id, msgs)
+                }
                 onNext={handleNext}
                 onBack={handleBack}
                 isLast={reviewIndex === criteria.length - 1}

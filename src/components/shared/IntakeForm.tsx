@@ -7,32 +7,35 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { FileDrop } from "@/components/ui/FileDrop";
-import type { IntakeData } from "@/types";
+import { ParsedTracksTable } from "@/components/shared/ParsedTracksTable";
+import type { IntakeData, ParsedTrack } from "@/types";
 
 interface IntakeFormProps {
   initial: IntakeData;
   loading?: boolean;
   parsing?: boolean;
+  parsedTracks: ParsedTrack[];
   onSubmit: (data: IntakeData) => void;
-  onParse?: (data: IntakeData) => void;
+  onParseTracks: (data: IntakeData) => void;
 }
 
 export function IntakeForm({
   initial,
   loading = false,
   parsing = false,
+  parsedTracks,
   onSubmit,
-  onParse,
+  onParseTracks,
 }: IntakeFormProps) {
   const [data, setData] = useState<IntakeData>(initial);
 
+  const hasParsedTracks = parsedTracks.length > 0;
   const canSubmit =
-    data.repoUrl.trim().length > 0 || data.productUrl.trim().length > 0;
+    (data.repoUrl.trim().length > 0 || data.productUrl.trim().length > 0) &&
+    hasParsedTracks &&
+    data.trackId.trim().length > 0;
 
-  const canParse =
-    data.criteriaText.trim().length > 0 ||
-    data.criteriaImage !== null ||
-    data.conceptPdf !== null;
+  const canParseTracks = data.conceptPdf !== null;
 
   return (
     <form
@@ -61,6 +64,39 @@ export function IntakeForm({
         />
       </div>
 
+      <label
+        className="flex flex-col gap-1.5"
+        htmlFor="trackId"
+      >
+        <span className="text-sm font-medium text-[var(--color-foreground)]">
+          {COPY.tracks.dropdownLabel}
+        </span>
+        <select
+          id="trackId"
+          name="trackId"
+          disabled={!hasParsedTracks}
+          value={data.trackId}
+          onChange={(e) => setData({ ...data, trackId: e.target.value })}
+          className="h-11 w-full rounded-2xl border border-[var(--color-border)] bg-white px-4 text-sm text-[var(--color-foreground)] transition-colors focus:border-[var(--color-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--color-foreground)]/10 disabled:cursor-not-allowed disabled:bg-[var(--color-surface-muted)] disabled:text-[var(--color-foreground-muted)]"
+        >
+          <option value="" disabled>
+            {hasParsedTracks
+              ? COPY.tracks.dropdownPlaceholder
+              : COPY.tracks.dropdownLocked}
+          </option>
+          {parsedTracks.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+        {!hasParsedTracks ? (
+          <span className="text-xs text-[var(--color-foreground-muted)]">
+            {COPY.tracks.parseHint}
+          </span>
+        ) : null}
+      </label>
+
       <Textarea
         name="criteriaText"
         label={COPY.intake.criteriaText.label}
@@ -87,29 +123,40 @@ export function IntakeForm({
         />
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border)] pt-4">
-        {onParse ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="md"
-            loading={parsing}
-            disabled={!canParse || parsing || loading}
-            onClick={() => onParse(data)}
-          >
-            {parsing ? COPY.intake.parsing : COPY.intake.parseAttachments}
-          </Button>
-        ) : <span />}
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-[var(--color-border-strong)] bg-[var(--color-surface-muted)] px-4 py-3">
+        <p className="text-xs text-[var(--color-foreground-muted)]">
+          {COPY.tracks.parseHint}
+        </p>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          loading={parsing}
+          disabled={!canParseTracks || parsing || loading}
+          onClick={() => onParseTracks(data)}
+        >
+          {parsing ? COPY.tracks.parsing : COPY.tracks.parseButton}
+        </Button>
+      </div>
 
-        <Button type="submit" loading={loading} disabled={!canSubmit || loading} size="lg">
+      {hasParsedTracks ? (
+        <ParsedTracksTable
+          tracks={parsedTracks}
+          selectedId={data.trackId}
+          onSelect={(id) => setData({ ...data, trackId: id })}
+        />
+      ) : null}
+
+      <div className="flex flex-wrap items-center justify-end gap-3 border-t border-[var(--color-border)] pt-4">
+        <Button
+          type="submit"
+          loading={loading}
+          disabled={!canSubmit || loading}
+          size="lg"
+        >
           {loading ? COPY.intake.submitLoading : COPY.intake.submit} →
         </Button>
       </div>
-      {onParse ? (
-        <p className="-mt-2 text-xs text-[var(--color-foreground-muted)]">
-          {COPY.intake.parseHint}
-        </p>
-      ) : null}
     </form>
   );
 }

@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { SERVER_ENV } from "@/config/env";
 import { SCORE_SCALES } from "@/config/criteria";
 import { getTrack } from "@/config/tracks";
+import { renderPdfPages } from "@/lib/pdf-pages";
 import type { Criterion, IntakeFile } from "@/types";
 
 export const runtime = "nodejs";
@@ -40,8 +41,12 @@ Constraints:
 - Make criteria specific to the project / hackathon if you have signal; otherwise sensible defaults
 - ids must be kebab-case and unique`;
 
-function buildUserContent(body: GenerateBody): OpenAI.Chat.ChatCompletionUserMessageParam["content"] {
+async function buildUserContent(
+  body: GenerateBody,
+): Promise<OpenAI.Chat.ChatCompletionUserMessageParam["content"]> {
   const track = getTrack(body.trackId);
+  const pdfPages = await renderPdfPages(body.conceptPdf);
+
   const lines: string[] = [
     `Hackathon track: ${track.name} — ${track.description}`,
     `Track emphasis: ${track.emphasis.join(", ")}`,
@@ -55,9 +60,9 @@ function buildUserContent(body: GenerateBody): OpenAI.Chat.ChatCompletionUserMes
   if (body.conceptPdf) {
     const note = body.conceptPdf.oversize
       ? "(too large to attach)"
-      : body.conceptPdf.base64
-        ? "(attached separately as a hint only — text not extracted)"
-        : "(metadata only)";
+      : pdfPages.length > 0
+        ? `(rendered ${pdfPages.length} page${pdfPages.length === 1 ? "" : "s"} as images below)`
+        : "(metadata only — could not render)";
     lines.push(`Hackathon concept PDF: ${body.conceptPdf.name} ${note}`);
   }
   const text = lines.join("\n");
@@ -72,6 +77,12 @@ function buildUserContent(body: GenerateBody): OpenAI.Chat.ChatCompletionUserMes
     content.push({
       type: "image_url",
       image_url: { url: body.criteriaImage.base64 },
+    });
+  }
+  for (const page of pdfPages) {
+    content.push({
+      type: "image_url",
+      image_url: { url: page.dataUrl },
     });
   }
   return content;
@@ -142,11 +153,12 @@ export async function POST(request: Request) {
   const openai = new OpenAI({ apiKey: SERVER_ENV.openaiApiKey });
 
   try {
+    const userContent = await buildUserContent(body);
     const completion = await openai.chat.completions.create({
       model: SERVER_ENV.openaiModel,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: buildUserContent(body) },
+        { role: "user", content: userContent },
       ],
       response_format: { type: "json_object" },
     });
