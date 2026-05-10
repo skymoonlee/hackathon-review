@@ -59,6 +59,16 @@ export interface HackathonPreset {
   tracks: ParsedTrack[];
 }
 
+/** Resolved track info passed to the judging agent so its scoring is anchored
+ *  to the same track context every team is judged under. */
+export interface TrackContext {
+  id: string;
+  name: string;
+  tagline?: string;
+  description: string;
+  emphasis?: readonly string[];
+}
+
 export interface ReviewScore {
   criterionId: string;
   value: number;
